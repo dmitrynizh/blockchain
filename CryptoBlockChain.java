@@ -1,126 +1,132 @@
 import java.util.*; import java.io.*; import java.net.*; import java.util.concurrent.atomic.*;
-import java.security.*;import java.nio.charset.StandardCharsets;
+import java.security.*; import java.security.spec.*; import static java.nio.charset.StandardCharsets.UTF_8; 
 public class CryptoBlockChain { // run: 'java BlockChain' or  'java BlockChain <nodes> <difficulty> <blocks>' 
-  static class Block { String id = ""; int state; Block prev, alt; Set<String> records; long stamp; }
-  static int node_count, node_maxcount, blk_difficulty, mine_ct, max_blocks; 
+  static class Block { String id = "", pk[]; int state, nonce; Block prev, alt; Set<String> records; long stamp; }
+  static int node_maxcount, blk_difficulty, mine_ct, max_blocks; 
   final static AtomicBoolean run = new AtomicBoolean(true); 
   final static AtomicInteger block_count = new AtomicInteger(1);
-  public static void main(String[] args) throws IOException { // run network
-    node_maxcount  = (args.length > 0) ? Integer.parseInt(args[0]) : 10;
-    blk_difficulty = (args.length > 1) ? Integer.parseInt(args[1]) : 5;
-    mine_ct        = (args.length > 2) ? 10000000*Integer.parseInt(args[2]) : 50000000;
-    max_blocks     = (args.length > 3) ? Integer.parseInt(args[3]) : 50;
+  public static void main(String[] args) throws Exception { // run network
+    node_maxcount  = (args.length > 0) ? Integer.parseInt(args[0]) : 7;
+    blk_difficulty = (args.length > 1) ? Integer.parseInt(args[1]) : 6;
+    mine_ct        = (args.length > 2) ? 10000000*Integer.parseInt(args[2]) : 10000000;
+    max_blocks     = (args.length > 3) ? Integer.parseInt(args[3]) : 10;
     Block zero = new Block(); zero.stamp = System.currentTimeMillis();
-    for (int i = 0; i < node_maxcount; i++)  startNode(zero);
+    for (int i = 0; i < node_maxcount; i++)  startNode(i, zero);
   }
-  static void startNode(Block zero) throws IOException {
+  static void startNode(int id, Block zero) throws Exception {
     Block b = new Block(); b.prev = zero; b.state = 2; b.records = new TreeSet<>((x, y)->x.compareTo(y));
-    startListener(++node_count, b);
-    startMiner(node_count, b);
+    KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC"); // ("DSA", "SUN");
+    keyGen.initialize(256,SecureRandom.getInstance("SHA1PRNG"));
+    KeyPair pair = keyGen.generateKeyPair();
+    startListener(id, b, pair.getPrivate(), pair.getPublic());
+    startMiner   (id, b, pair.getPrivate(), pair.getPublic());
   }
-  static void startMiner(final int id, final Block scratch) throws IOException {
+  static void startMiner(final int id, final Block scratch, PrivateKey sk, PublicKey pk) throws IOException {
     (new Thread() { @Override public void run() {
       try {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         DatagramSocket udpSocket = new DatagramSocket();
         InetAddress mcIPAddress = InetAddress.getByName("230.1.1.1");
         int nonce_idx = 0, nonce = 0; byte[] header = null; 
+        String msgstr  = "PK " + id + " " + to64(pk.getEncoded());
         while (run.get()) {
-          String msgstr  = null;
           if (block_count.get() > max_blocks) { msgstr = "ALL HALT AND DUMP"; run.set(false); } // halt
           else if (scratch.state != 0) { // reset // new txn/block future: new Merkle
-            String header_str = scratch.prev.id + toHex(md.digest(Arrays.toString(scratch.records.toArray(new String[0])).getBytes(StandardCharsets.UTF_8))) +  "00000000";
-            header = hexStringToBytes(header_str);
-            nonce_idx = header.length-4;
-            nonce = scratch.state = 0;
-          } 
-          for (int lim = randN(mine_ct), i = 0; i <  lim && msgstr == null; i++, nonce++) { // mine
-            header[nonce_idx]   = (byte)(nonce >>> 24);
-            header[nonce_idx+1] = (byte)(nonce >>> 16);
-            header[nonce_idx+2] = (byte)(nonce >>>  8);
-            header[nonce_idx+2] = (byte)(nonce);
+            String root = toHex(md.digest(Arrays.toString(scratch.records.toArray(new String[0])).getBytes(UTF_8)));
+            header = hexStringToBytes(scratch.prev.id + root + "00000000");
+            nonce_idx = header.length-4; nonce = scratch.state = 0;
+          } // "Each node works on finding a difficult proof-of-work for its block" [1] 
+          for (int lim = randN(mine_ct), i = 0; i <  lim && msgstr == null; i++, nonce++) { // how long depends on randN(mine_ct)
+            for (int x = 0, z = 24; x < 4; x++, z-=8) header[nonce_idx+x] = (byte)(nonce >>> z);
             byte[] hash = md.digest(header);
             if (fit_p(hash, blk_difficulty) && scratch.state == 0) { // mined new block!!
-              scratch.id = toHex(hash);
-              // do not scratch.records.add(String.format("MINT 50btc to %x", randN(1000000))); // miner's reward
-              scratch.stamp = System.currentTimeMillis();
+              scratch.id = toHex(hash); scratch.stamp = System.currentTimeMillis(); scratch.state = 2; 
               String txns = Arrays.toString(scratch.records.toArray(new String[0]));
-              msgstr = String.format("BLN %s %s %d | MINT 50btc to %x, %s", scratch.id, scratch.prev.id, scratch.stamp, randN(1000000), txns.substring(1,txns.length()-1));
-              scratch.state = 2; 
-              block_count.getAndIncrement(); 
+              msgstr = String.format("BLN %s %s %d %d \n| ", scratch.id, scratch.prev.id, nonce, scratch.stamp) 
+                + sign(String.format("MINT ! reward %d with 50btc ! !", id, id), sk) 
+                + (scratch.records.isEmpty() ? "" : ", " + txns.substring(1,txns.length()-1)); // this substring strips [ and ]
+              block_count.getAndIncrement(); // [1]: "When a node finds a proof-of-work, it broadcasts the block to all nodes"
             } 
           }
-          if (msgstr == null && randN(1000) < 100) { // in 10% cases, send txn
-            msgstr = String.format("TXN at %tT %x pays %.3fbtc to %x", new Date(), randN(1000000), 10*Math.random(), randN(1000000));
-            scratch.state = 1; scratch.records.add(msgstr); // delete? - redundand with listener input.
-          }
-          if (msgstr != null) {
+          if (msgstr == null && randN(100) < 10)  // in 10% cases, send txn to random-chosen node
+            msgstr = sign(String.format("TXN at %tT %d pays %.3fbtc to %d", new Date(), id, 10*Math.random(), randN(1000)%node_maxcount), sk);
+          if (msgstr != null) { // from [1]: "New transactions are broadcast to all nodes"
             byte[] msg = msgstr.getBytes();
             udpSocket.send(new DatagramPacket(msg, msg.length, mcIPAddress, 9090));
-            if (node_maxcount < 10 || !msgstr.startsWith("TXN")) System.out.println("node" + id + "> " + msgstr);
-            if (msgstr.startsWith("ALL HALT"))
+            if (node_maxcount <= 10 || !msgstr.startsWith("TXN")) out("node" + id + "> " + msgstr);
+            if (msgstr.startsWith("BLN")) Thread.sleep(500);
+            else if (msgstr.startsWith("ALL HALT"))
               for (int i = 0; i < 10; i++) {
                 Thread.sleep(100);    
                 udpSocket.send(new DatagramPacket(msg, msg.length, mcIPAddress, 9090));
               }
+            else Thread.sleep(100);
+            msgstr = null;
           }
         }
         udpSocket.close();
       } catch (Exception ex) { ex.printStackTrace(); }
-      System.out.println("node" + id + " sender exiting.");
+      out("node" + id + " sender exiting.");
     }}).start();
   }
-  static void startListener(final int id, final Block scratch) throws IOException {
+  static void startListener(final int id, final Block scratch, PrivateKey sk, PublicKey pk) throws IOException {
     (new Thread() { @Override public void run() {
       try {
         InetAddress mcIPAddress = InetAddress.getByName("230.1.1.1");
         MulticastSocket mcSocket = new MulticastSocket(9090);
         mcSocket.joinGroup(mcIPAddress);
         DatagramPacket packet = new DatagramPacket(new byte[4*1024], 4*1024); 
+        KeyFactory kf = KeyFactory.getInstance("EC");
+        Signature sig = Signature.getInstance("SHA256withECDSA"); //   ("SHA1withDSA", "SUN");
+        scratch.pk = new String[node_maxcount];
         while (run.get()) {
           mcSocket.receive(packet);
           String msg = new String(packet.getData(), packet.getOffset(), packet.getLength());
-          if (node_maxcount < 5) System.out.println("node" + id + "< " + msg);
-          if (msg.startsWith("TXN")) {
-            if (scratch.records.contains(msg)) ; // do nothing
-            else { // add record // System.out.println("node" + id + ": added it.");
-              scratch.records.add(msg); scratch.state = 1; // state 1 is 'dirty', stop mining
-            }
+          if (node_maxcount < 5) out("node" + id + "< " + msg);
+          if (msg.startsWith("TXN") && !scratch.records.contains(msg)) { // add new record and set state to 1
+            scratch.records.add(msg); scratch.state = 1; // quote from [1]: "Each node collects new transactions into a block"
           } else if (msg.startsWith("BLN")) { // validate, then acquire new block and chain it
             String[] header_arr = msg.substring(0, msg.indexOf("|")).split(" ");
             String block_prev = header_arr[2];
-            if (scratch.alt != null) { // time to resolve conflict
-              if (block_prev.equals(scratch.alt.id)) scratch.prev = scratch.alt; 
+            if (scratch.alt != null) { // time to resolve conflict. 
+              if (block_prev.equals(scratch.alt.id)) 
+                scratch.prev = scratch.alt; // "Nodes always consider the longest chain to be the correct one"[1]
               scratch.alt = null; 
-            }
-            List<String> txns = Arrays.asList(msg.substring(msg.indexOf("|")+2).split(", ")); // pretend list is validated (signatures etc)
+            } // next, verify txns. "Nodes accept the block only if all transactions in it are valid and not already spent"[1]
+            String[] txnsa = msg.substring(msg.indexOf("|")+2).split(", "); 
+            for (String txn: txnsa) if (!verifyTxn(txn, txn.split(" "), scratch.pk, sig, kf)) out("Verification FAILED: " + txn);
+            List<String> txns = Arrays.asList(txnsa); 
             boolean current_txn = true; // we want to make sure none of the txns are stored in prev blocks!
             for (Block b = scratch.prev; b.prev != null && (current_txn = Collections.disjoint(b.records, txns)); b = b.prev);
-            if (!current_txn) System.out.println("-- block contains spent txns, rejecting it: " + msg);
-            else { // proceed
-              Block b = new Block(); 
+            if (!current_txn) out("-- block contains spent txns, rejecting it: " + msg);
+            else { // proceed.  "Nodes express their acceptance of the block by working on creating the next block in the chain,
+              Block b = new Block(); // using the hash of the accepted block as the previous hash" [1]
               if (!block_prev.equals(scratch.prev.id)) { // very rare
                 if (block_prev.equals(scratch.prev.prev.id)) { // contestant
-                  { b.prev = scratch.prev.prev; scratch.alt = b; } 
-                } else System.out.println("-- node"+id+": Unresloved Collision with prev.id=" + scratch.prev.id + " " +  msg);
+                  { b.prev = scratch.prev.prev; scratch.alt = b; } // "save the other branch in case it becomes longe"[1]
+                } else out("-- node"+id+": Unresloved Collision with prev.id=" + scratch.prev.id + " " +  msg);
               } else { b.prev = scratch.prev; scratch.prev = b; }
-              b.id = header_arr[1]; b.stamp = Long.parseLong(header_arr[3]); 
+              b.id = header_arr[1]; b.nonce = Integer.parseInt(header_arr[3]); b.stamp = Long.parseLong(header_arr[4]); 
               (b.records = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns);
               scratch.state = 2; scratch.records.removeAll(txns); // scratch.id = null;
-              if (scratch.records.size() != 0) System.out.println("-- node"+id+": left out of last seen block: " + Arrays.toString(scratch.records.toArray(new String[0])));
+              if (scratch.records.size() != 0) out("-- node"+id+": left out of last seen block: " + Arrays.toString(scratch.records.toArray(new String[0])));
             }
-          } else ; // complain? System.out.println("node "+id+ ": got unknown command!");
+          } else if (msg.startsWith("PK")) {
+            String[] ma = msg.split(" "); 
+            scratch.pk[Integer.parseInt(ma[1])] = ma[2];
+          } else ; // complain? out("node "+id+ ": got unknown command!");
         }
         String blockchain = "";
         for (Block b = scratch.prev; b.prev != null; b = b.prev) 
-          blockchain = String.format("-------\n%s %s %d %s\n", b.id, b.prev.id, b.stamp, Arrays.toString(b.records.toArray(new String[0]))) + blockchain;
+          blockchain = String.format("-------\n%s %s %d %d %s\n", b.id, b.prev.id, b.nonce, b.stamp, Arrays.toString(b.records.toArray(new String[0]))) + blockchain;
         try (PrintWriter out = new PrintWriter("blockchain"+id+".txt")) { out.println(blockchain); }
         mcSocket.leaveGroup(mcIPAddress);
         mcSocket.close();
       } catch (Exception ex) { ex.printStackTrace(); }
-      System.out.println("node" + id + " listener exiting.");
+      out("node" + id + " listener exiting.");
     }}).start();
   }
+  static String out(String s) { System. out.println(s); return s; }
   static int randN(int range) { return (int)Math.round(Math.random()*range); }
   static boolean fit_p(byte[] hash, int difficulty) { // does hash have given difficulty?
     int zerobytes = difficulty/2, half = difficulty%2;
@@ -135,11 +141,21 @@ public class CryptoBlockChain { // run: 'java BlockChain' or  'java BlockChain <
     return sb.toString();
   }
   static byte[] hexStringToBytes(String s) { // from stackoverflow
-    int len = s.length();
-    byte[] data = new byte[len / 2];
+    int len = s.length(); byte[] data = new byte[len / 2];
     for (int i = 0; i < len; i += 2)
-      data[i / 2] = (byte)((Character.digit(s.charAt(i), 16) << 4)
-                           + Character.digit(s.charAt(i+1), 16));
+      data[i / 2] = (byte)((Character.digit(s.charAt(i), 16) << 4)+ Character.digit(s.charAt(i+1), 16));
     return data;
   }
-}
+  static String to64(byte[] a) { return Base64.getEncoder().encodeToString(a); }
+  static byte[] as64(String s) { return Base64.getDecoder().decode(s.getBytes(UTF_8)); }
+  static boolean verifyTxn(String txn, String[] atr, String[] pk, Signature s, KeyFactory kf) throws Exception {
+    X509EncodedKeySpec pkSpec = new X509EncodedKeySpec(as64(pk[Integer.parseInt(atr[3])]));
+    s.initVerify(kf.generatePublic(pkSpec));
+    s.update(txn.substring(0, txn.lastIndexOf(" ", txn.length()-20)).getBytes((UTF_8)));
+    return s.verify(as64(atr[8]));                                                           
+  }
+  static String sign(String msg, PrivateKey sk) throws Exception {
+    Signature s = Signature.getInstance("SHA256withECDSA"); s.initSign(sk); s.update(msg.getBytes(UTF_8));
+    return msg + " " + to64(s.sign()) + " \n"; // last space is important!
+  }
+} // references: [1] Satoshi Nakamoto. Bitcoin: A Peer-to-Peer Electronic Cash System.
