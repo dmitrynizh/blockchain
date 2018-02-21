@@ -4,12 +4,49 @@ My Tiny Crypto Blockchain Simulator
 Copyright (c) 2018 dmitrynizh
 
 This is a toy but demonstrates many concepts of digital currency,
-distributed consensus and modern cryptography
+peer-to-peer distributed consensus and modern cryptography
 
-Each java file in this repo is standalone (independent). 
+Each java file in this repo is standalone (independent).
+CryptoBlockChain.java is the most complex one. It simulates a
+cryptographic blockchain as outlined in the Bitcoin white paper.
+To run compile and the simulator, you need JDK Java 8 or newer.
+
+Compile:   % javac CryptoBlockChain.java
+run:       $ java CryptoBlockChain
+
+You can alter the behavior py providing command line parameters as integers:
+ 
+$ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <block-count>
+
+node-count      - How many nodes are in the p2p network. Each node mines new blocks. 
+                  Default is 7 nodes.
+coin-difficulty - Miners seek for that many zeros in block hash values they generate. 
+                  Default is 6.
+mining-batch    - Miners make random choices to generate from 0 to 10M * <mining-batch> hashes before updating. 
+                  Default is 1
+block-count     - The network shuts down after that many blocks were produced. Default is 10.
+
+Examples:
+
+$ java CryptoBlockChain 5
+$ java CryptoBlockChain 6 7 5 3
+
+The parameters coin-difficulty and mining-batch are somewhat coupled
+as in a system with many nodes and transactions it is rarely possible
+to mine with high difficulty in a small number of iterations before
+accepting new transactions and blocks.
+
+When the network reaches the block-count goal, nodes start shutting
+down. Each node saves its blockchain ledger onto the disk.  The
+consensus is demonstated when all such files are essentially
+identical.
+
+The rest of CryptoBlockChain is as described in the Bitcoin WP
+(Satoshi Nakamoto. Bitcoin: A Peer-to-Peer Electronic Cash System)
+
+Other files in the repo demonstrate various aspects of blockchain or cryptography:
 
 BlockChain.java        - simple non-cryptographic consensus over a peer-2-peer network 
-CryptoBlockChain.java  - cryptographic blockchain as outlined in the Bitcoin white paper
 GenHash.java           - produce key pair from text seed
 GenSig.java            - derived from GenSig tutorial
 Merkle.java            - simple demonstration of Merkle trees
