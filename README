@@ -12,9 +12,9 @@ cryptographic blockchain as outlined in the Bitcoin white paper.
 To compile and run the simulator, you need JDK Java 8 or newer.
 
 Compile:   % javac CryptoBlockChain.java
-run:       $ java CryptoBlockChain
+Run:       $ java CryptoBlockChain
 
-You can alter the behavior py providing command line parameters as integers:
+You can alter the behavior by providing command line parameters as integers:
  
 $ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <block-count>
 
