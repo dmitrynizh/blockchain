@@ -67,6 +67,80 @@ Node's pk request  :  PK? <address> >
 
 <signature> and <pk> are printed out in base64. Hashes are in hex.
 
+Sample log:
+
+$ java CryptoBlockChain 7 6 3 2
+node0> PK 0 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEut3hbQc5Kt0pX5IjFmbKpxIHDhpTY7c66p1rDdTOkGvJrh3FjTJjuY1soHHuJZ7rymtOUPEhOHArbyXxJ7adeQ==
+node5> PK 5 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7kmFRGrfFQSOlCPxb+Q8Di7viDaIx/4Tbyx+jBMvn/2adf3R89jMHdjA944/OLCD0tvsrpcrggryNLVls9HQPQ==
+node1> PK 1 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEazjMlgJ+bPFJ10gO9n3gy+dCzcb23Olg6j1vTazR+9VYjFGKEdkp3RmW/2JoceRnCL2iz57sShKGLkLZv2F05A==
+node2> PK 2 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEL+9iAnMIgnRwwU0UGOyxC7HMc5q1lGWK/iejsdV0HtBxdCWVnqc79nwVJzi1/qoTcy/ZN27PJ3foCUTZkhNu6w==
+node3> PK 3 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8Fih5WgNHJwCj2cH2RJDacSFgZfGXDSMM2XebaZhcHd1bf6jGGEJvjUrxBgIL0EYbxyOBKi2CYM3WpmapRFvzw==
+node4> PK 4 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEkQOAO15i0D+RBnkZ7M9ehKuB/zvHndh7yZXHMKH4lh9QDYVb+85B69vlrXp6xLtqU64jyANIjqrblSwIRTCo+Q==
+node6> PK 6 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEcYpGT8+AuRRqCGT/mFY3hBK78IrGNQ0FZM7ZPhl4lfceB3oCbcDCuU0qISLn7/M2khue5dYty4QUsf7Dr5JB7g==
+node5> TXN at 09:19:34 5 pays 2.338btc to 6 MEUCIQDuKkltAvduvwkub9oNDY27QlD80CMfV+BzXarSl+NPUAIgAr3LfwvlUFlcTiK+pjexPrauRolRnlDQqATWXPCBUKA= 
+
+node5> BLN 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09  32997199 1519233602372 
+| MINT ! reward 5 with 50btc ! ! MEUCIBdlvlQBl+N7xFLtuD/p3hFDWDh1un4MYvp4H5u0kuO8AiEAoA4PR7TavxVemEDiP74JsTws0xCISaPyleYFOXNAMDQ= 
+, TXN at 09:19:34 5 pays 2.338btc to 6 MEUCIQDuKkltAvduvwkub9oNDY27QlD80CMfV+BzXarSl+NPUAIgAr3LfwvlUFlcTiK+pjexPrauRolRnlDQqATWXPCBUKA= 
+
+node0> TXN at 09:20:07 0 pays 7.320btc to 1 MEYCIQCeY7I06+IcGR9/Otye9LZ8oVkK/LHMu95m2SN4Uw2ObwIhAP+PDkIJfMejh5Sx/x2uPQDa/L+T3S1QhUXfgQwZ/D4L 
+
+node1> TXN at 09:20:07 1 pays 7.015btc to 6 MEUCIH2GDN/H41QN2/uAI1Uta/FYyVK/xGWJUyIVGU2oiUoqAiEA1rrsC8iQKHT0cBABiAtKcnAbrUbgczxciC8zTCmdaIc= 
+
+node2> TXN at 09:20:10 2 pays 9.191btc to 1 MEUCIQDwaynm6hPtZLB4F/kjNsKYulguQ/RPbcnh9zOlb6drpAIgdgnqb9/uhKbgFxbKnrjTWAj0YMaZg5/1df4cN8Siogw= 
+
+node3> TXN at 09:20:22 3 pays 0.489btc to 2 MEUCIH0Y/ed1F8pZiw1cDoiVmHDV7sENCEWDk+D2oppfATyzAiEAlcg6IXmG1cFnAIwlc/qRbpNwqaMV9bql2h0zhVTnCO8= 
+
+node3> BLN 00000054162c163e3bea7180138feab75dfae8a5d03b006fd1042b339ce87ddf 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09 8186346 1519233633390 
+| MINT ! reward 3 with 50btc ! ! MEUCIFUBpUNr6tMrBB9J/lzzEsveHaNfztSpkDRUTyldSqcpAiEAy4JuVUH2lWdKtGqm7eY6Mrr6ju59dKr075LDdDoR97g= 
+, TXN at 09:20:07 0 pays 7.320btc to 1 MEYCIQCeY7I06+IcGR9/Otye9LZ8oVkK/LHMu95m2SN4Uw2ObwIhAP+PDkIJfMejh5Sx/x2uPQDa/L+T3S1QhUXfgQwZ/D4L 
+, TXN at 09:20:07 1 pays 7.015btc to 6 MEUCIH2GDN/H41QN2/uAI1Uta/FYyVK/xGWJUyIVGU2oiUoqAiEA1rrsC8iQKHT0cBABiAtKcnAbrUbgczxciC8zTCmdaIc= 
+, TXN at 09:20:10 2 pays 9.191btc to 1 MEUCIQDwaynm6hPtZLB4F/kjNsKYulguQ/RPbcnh9zOlb6drpAIgdgnqb9/uhKbgFxbKnrjTWAj0YMaZg5/1df4cN8Siogw= 
+, TXN at 09:20:22 3 pays 0.489btc to 2 MEUCIH0Y/ed1F8pZiw1cDoiVmHDV7sENCEWDk+D2oppfATyzAiEAlcg6IXmG1cFnAIwlc/qRbpNwqaMV9bql2h0zhVTnCO8= 
+
+node3> ALL HALT AND DUMP
+node3 listener exiting.
+node1 listener exiting.
+node4 listener exiting.
+node0 listener exiting.
+node2 listener exiting.
+node5 listener exiting.
+node6 listener exiting.
+node5 sender exiting.
+node0 sender exiting.
+node3 sender exiting.
+node6 sender exiting.
+node2 sender exiting.
+node4 sender exiting.
+node1 sender exiting.
+$ 
+
+All ledgers saved on disk by each node are identical. Example:
+
+blockchain5.txt
+---------------
+
+
+ hash: 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09
+ prev: 
+nonce: 32997199 Wed Feb 21 09:20:02 PST 2018 
+[MINT ! reward 5 with 50btc ! ! MEUCIBdlvlQBl+N7xFLtuD/p3hFDWDh1un4MYvp4H5u0kuO8AiEAoA4PR7TavxVemEDiP74JsTws0xCISaPyleYFOXNAMDQ= 
+, TXN at 09:19:34 5 pays 2.338btc to 6 MEUCIQDuKkltAvduvwkub9oNDY27QlD80CMfV+BzXarSl+NPUAIgAr3LfwvlUFlcTiK+pjexPrauRolRnlDQqATWXPCBUKA= 
+]
+
+
+ hash: 00000054162c163e3bea7180138feab75dfae8a5d03b006fd1042b339ce87ddf
+ prev: 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09
+nonce: 8186346 Wed Feb 21 09:20:33 PST 2018 
+[MINT ! reward 3 with 50btc ! ! MEUCIFUBpUNr6tMrBB9J/lzzEsveHaNfztSpkDRUTyldSqcpAiEAy4JuVUH2lWdKtGqm7eY6Mrr6ju59dKr075LDdDoR97g= 
+, TXN at 09:20:07 0 pays 7.320btc to 1 MEYCIQCeY7I06+IcGR9/Otye9LZ8oVkK/LHMu95m2SN4Uw2ObwIhAP+PDkIJfMejh5Sx/x2uPQDa/L+T3S1QhUXfgQwZ/D4L 
+, TXN at 09:20:07 1 pays 7.015btc to 6 MEUCIH2GDN/H41QN2/uAI1Uta/FYyVK/xGWJUyIVGU2oiUoqAiEA1rrsC8iQKHT0cBABiAtKcnAbrUbgczxciC8zTCmdaIc= 
+, TXN at 09:20:10 2 pays 9.191btc to 1 MEUCIQDwaynm6hPtZLB4F/kjNsKYulguQ/RPbcnh9zOlb6drpAIgdgnqb9/uhKbgFxbKnrjTWAj0YMaZg5/1df4cN8Siogw= 
+, TXN at 09:20:22 3 pays 0.489btc to 2 MEUCIH0Y/ed1F8pZiw1cDoiVmHDV7sENCEWDk+D2oppfATyzAiEAlcg6IXmG1cFnAIwlc/qRbpNwqaMV9bql2h0zhVTnCO8= 
+]
+
+
+---------------
 
 Other files in the repo demonstrate various aspects of blockchain or cryptography:
 
