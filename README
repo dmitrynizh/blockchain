@@ -4,7 +4,7 @@ My Tiny Crypto Blockchain Simulator
 Copyright (c) 2018 dmitrynizh
 
 This is a toy but demonstrates many concepts of digital currency,
-peer-to-peer distributed consensus and modern cryptography
+peer-to-peer distributed consensus and modern cryptography.
 
 Each java file in this repo is standalone (independent).
 CryptoBlockChain.java is the most complex one. It simulates a
@@ -43,6 +43,30 @@ identical.
 
 The rest of CryptoBlockChain is as described in the Bitcoin WP
 (Satoshi Nakamoto. Bitcoin: A Peer-to-Peer Electronic Cash System)
+except for the following
+
+(1) no mechanism for the nodes to join and leave the network at will.
+(2) no multiple input transactions (chapter 9)
+(3) sender credibility not verified
+(4) Merkle trees not pruned as described in ch.7, and in fact, not currently kept.
+(5) no transaction fees
+(7) reward is fixed at 50 btc
+(8) nodes can not yet request a missing block (chapter 5)
+
+Some of these limitations will be removed in future updates.
+
+The screen log that appears when CryptoBlockChain runs contains what
+nodes broadcast when the number of nodes is greater that 5. With 4 or less nodes, much more
+is logged to facilitate debugging. At the moment the nodes broadcast the following:
+
+Node's public key  :  PK <address> <pk>
+Node's payment     :  TXN ... <address> ...  <address>  <signature>
+Newly minted block :  BLN <hash> <prev-hash> .....
+Halting broadcast  :  ALL HALT AND DUMP
+Node's pk request  :  PK? <address> >
+
+<signature> and <pk> are printed out in base64. Hashes are in hex.
+
 
 Other files in the repo demonstrate various aspects of blockchain or cryptography:
 
