@@ -1,7 +1,7 @@
 import java.util.*; import java.io.*; import java.net.*; import java.util.concurrent.atomic.*;
 import java.security.*; import java.security.spec.*; import static java.nio.charset.StandardCharsets.UTF_8; 
 public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
-  static class Block { String id = "", pk[]; int state, nonce; Block prev, alt; Set<String> records; long stamp;}
+  static class Block { String id, pk[]; int state, nonce; Block prev, alt; Set<String> records; long stamp;}
   static int node_maxcount, blk_difficulty, effort, max_blocks; static volatile boolean run = true;
   final static AtomicInteger block_count = new AtomicInteger(1);
   public static void main(String[] args) throws Exception { // run network
@@ -9,18 +9,18 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
     blk_difficulty = (args.length > 1) ? Integer.parseInt(args[1]) : 6;
     effort        = (args.length > 2) ? 10000000*Integer.parseInt(args[2]) : 10000000;
     max_blocks     = (args.length > 3) ? Integer.parseInt(args[3]) : 10;
-    Block zero = new Block(); zero.stamp = System.currentTimeMillis();
+    Block zero = new Block(); zero.stamp = System.currentTimeMillis(); zero.id = "";
     for (int i = 0; i < node_maxcount; i++)  startNode(i, zero);
   }
   static void startNode(int id, Block zero) throws Exception {
     Block b = new Block(); b.prev = zero; b.state = 2; b.records = new TreeSet<>((x, y)->x.compareTo(y));
     KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
     keyGen.initialize(256,SecureRandom.getInstance("SHA1PRNG"));
-    KeyPair pair = keyGen.generateKeyPair(); Stack<String> mq = new Stack<String>();
-    startListener(id, b, pair.getPrivate(), pair.getPublic(), mq);
-    startMiner   (id, b, pair.getPrivate(), pair.getPublic(), mq);
+    KeyPair pair = keyGen.generateKeyPair(); Stack<String> mq = new Stack<String>(); // mq is thread safe
+    startListener(id, b, pair.getPublic(), mq);
+    startMiner(id, b, pair.getPrivate(), pair.getPublic(), mq);
   }
-  static void startMiner(final int id, final Block scratch, PrivateKey sk, PublicKey pk, Stack<String> mq) throws IOException {
+  static void startMiner(int id, Block scratch, PrivateKey sk, PublicKey pk, Stack<String> mq) throws IOException {
     (new Thread() { @Override public void run() {
       try {
         MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -48,7 +48,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
             } 
           } 
           if (mq.isEmpty() && randN(100) < 15)  // in 15% cases, send payment to random-chosen node
-            mq.push(sign(String.format("TXN at %tT %d pays %.3fbtc to %d", new Date(), id, 10*Math.random(), randN(1000)%node_maxcount), sk));
+            mq.push(sign(String.format("TXN at %tT %d pays %.3fbtc to %d",new Date(), id, 10*Math.random(), randN(1000)%node_maxcount), sk));
           if (!mq.isEmpty()) { // from [1]: "New transactions are broadcast to all nodes"
             String msgstr = mq.pop(); if (msgstr.equals("PK+")) msgstr = pkinfo;
             byte[] msg = msgstr.getBytes();
@@ -67,7 +67,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
       out("node" + id + " sender exiting.");
     }}).start();
   }
-  static void startListener(final int id, final Block scratch, PrivateKey sk, PublicKey pk, Stack<String> mq) throws IOException {
+  static void startListener(int id, Block scratch, PublicKey pk, Stack<String> mq) throws IOException {
     (new Thread() { @Override public void run() { 
       try {
         InetAddress mcIPAddress = InetAddress.getByName("230.1.1.1");
@@ -86,7 +86,8 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
               pkok = true; String[] a = scratch.pk;
               for (int j = 0; j < a.length; j++) if (a[j] == null) { pkok = false; mq.push("PK? " + j + " ?"); }
             } // quote from reference [1]: "Each node collects new transactions into a block"
-            scratch.records.add(msg); scratch.state = 1; 
+            if (!verifyTxn(id, msg, msg.split(" "), scratch.pk, sig, kf)) out("Verification FAILED: " + msg);            
+            else { scratch.records.add(msg); scratch.state = 1; }
           } else if (msg.startsWith("BLN")) { // validate, then acquire new block and chain it
             String[] header_arr = msg.substring(0, msg.indexOf("|")).split(" ");
             String block_prev = header_arr[2];
@@ -100,7 +101,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
             List<String> txns = Arrays.asList(txnsa); 
             boolean current_txn = true; // we want to make sure none of the txns are stored in prev blocks!
             for (Block b = scratch.prev; b.prev != null && (current_txn = Collections.disjoint(b.records, txns)); b = b.prev);
-            if (!current_txn) out("-- block contains spent txns, rejecting it: " + msg);
+            if (!current_txn) out("-- node"+id+": block contains spent txns, rejecting it: " + msg);
             else {                   // "Nodes express their acceptance of the block by working on creating the next block 
               Block b = new Block(); //  in the chain, using the hash of the accepted block as the previous hash" [1]
               if (!block_prev.equals(scratch.prev.id)) { // very rare
@@ -121,7 +122,8 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
         }
         String blockchain = "";
         for (Block b = scratch.prev; b.prev != null; b = b.prev) 
-          blockchain = String.format("======\n%s %s %d %d \n%s\n", b.id, b.prev.id, b.nonce, b.stamp, Arrays.toString(b.records.toArray(new String[0]))) + blockchain;
+          blockchain = String.format("\n\n hash: %s\n prev: %s\nnonce: %d %tc \n%s\n", b.id, b.prev.id, b.nonce, 
+                                     new Date(b.stamp), Arrays.toString(b.records.toArray(new String[0]))) + blockchain;
         try (PrintWriter out = new PrintWriter("blockchain"+id+".txt")) { out.println(blockchain); }
         mcSocket.leaveGroup(mcIPAddress);
         mcSocket.close();
