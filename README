@@ -46,12 +46,12 @@ The rest of CryptoBlockChain is as described in the Bitcoin WP
 
 Other files in the repo demonstrate various aspects of blockchain or cryptography:
 
-BlockChain.java        - simple non-cryptographic consensus over a peer-2-peer network 
-GenHash.java           - produce key pair from text seed
-GenSig.java            - derived from GenSig tutorial
-Merkle.java            - simple demonstration of Merkle trees
-Mine.java              - standalone bitcopin-like hash mining engine
-VerSig.java            - derived from tutorial VerSig
+BlockChain.java - simple non-cryptographic consensus over a peer-2-peer network 
+GenHash.java    - produce key pair from text seed
+GenSig.java     - initially derived from Java tutorial, expanded and re-written
+Merkle.java     - simple demonstration of Merkle trees
+Mine.java       - standalone (single-node) bitcoin-like hash mining engine
+VerSig.java     - initially derived from Java tutorial, expanded and re-written
 
 All code is under MIT Licencse. Copyright (c) 2018 dmitrynizh
 
