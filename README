@@ -9,7 +9,7 @@ peer-to-peer distributed consensus and modern cryptography.
 Each java file in this repo is standalone (independent).
 CryptoBlockChain.java is the most complex one. It simulates a
 cryptographic blockchain as outlined in the Bitcoin white paper.
-To run compile and the simulator, you need JDK Java 8 or newer.
+To compile and run the simulator, you need JDK Java 8 or newer.
 
 Compile:   % javac CryptoBlockChain.java
 run:       $ java CryptoBlockChain
