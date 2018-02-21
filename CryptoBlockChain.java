@@ -1,14 +1,13 @@
 import java.util.*; import java.io.*; import java.net.*; import java.util.concurrent.atomic.*;
 import java.security.*; import java.security.spec.*; import static java.nio.charset.StandardCharsets.UTF_8; 
-public class CryptoBlockChain { // run: 'java BlockChain' or  'java BlockChain <nodes> <difficulty> <blocks>' 
+public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static class Block { String id = "", pk[]; int state, nonce; Block prev, alt; Set<String> records; long stamp;}
-  static int node_maxcount, blk_difficulty, mine_ct, max_blocks; 
-  final static AtomicBoolean run = new AtomicBoolean(true); 
+  static int node_maxcount, blk_difficulty, effort, max_blocks; static volatile boolean run = true;
   final static AtomicInteger block_count = new AtomicInteger(1);
   public static void main(String[] args) throws Exception { // run network
     node_maxcount  = (args.length > 0) ? Integer.parseInt(args[0]) : 7;
     blk_difficulty = (args.length > 1) ? Integer.parseInt(args[1]) : 6;
-    mine_ct        = (args.length > 2) ? 10000000*Integer.parseInt(args[2]) : 10000000;
+    effort        = (args.length > 2) ? 10000000*Integer.parseInt(args[2]) : 10000000;
     max_blocks     = (args.length > 3) ? Integer.parseInt(args[3]) : 10;
     Block zero = new Block(); zero.stamp = System.currentTimeMillis();
     for (int i = 0; i < node_maxcount; i++)  startNode(i, zero);
@@ -29,14 +28,14 @@ public class CryptoBlockChain { // run: 'java BlockChain' or  'java BlockChain <
         InetAddress mcIPAddress = InetAddress.getByName("230.1.1.1");
         int nonce_idx = 0, nonce = 0; byte[] header = null; 
         String pkinfo = "PK " + id + " " + to64(pk.getEncoded()); mq.push(pkinfo); 
-        while (run.get()) {
-          if (block_count.get() > max_blocks) { mq.push("ALL HALT AND DUMP"); run.set(false); } // halt
+        while (run) {
+          if (block_count.get() > max_blocks) { mq.push("ALL HALT AND DUMP"); run = false; } // halt
           else if (scratch.state != 0) { // reset // new txn/block future: new Merkle
             String root = toHex(md.digest(Arrays.toString(scratch.records.toArray(new String[0])).getBytes(UTF_8)));
             header = hexStringToBytes(scratch.prev.id + root + "00000000");
             nonce_idx = header.length-4; nonce = scratch.state = 0;
           } // "Each node works on finding a difficult proof-of-work for its block" - see reference [1].
-          for (int lim = randN(mine_ct), i = 0; i <  lim && mq.isEmpty(); i++, nonce++) { // how long depends on randN(mine_ct)
+          for (int lim = randN(effort), i = 0; i <  lim && mq.isEmpty(); i++, nonce++) { // randN(effort) sets duration
             for (int x = 0, z = 24; x < 4; x++, z-=8) header[nonce_idx+x] = (byte)(nonce >>> z);
             byte[] hash = md.digest(header);
             if (fit_p(hash, blk_difficulty) && scratch.state == 0) { // mined new block!!
@@ -76,9 +75,9 @@ public class CryptoBlockChain { // run: 'java BlockChain' or  'java BlockChain <
         mcSocket.joinGroup(mcIPAddress);
         DatagramPacket packet = new DatagramPacket(new byte[4*1024], 4*1024); 
         KeyFactory kf = KeyFactory.getInstance("EC");
-        Signature sig = Signature.getInstance("SHA256withECDSA"); //   ("SHA1withDSA", "SUN");
+        Signature sig = Signature.getInstance("SHA256withECDSA");
         scratch.pk = new String[node_maxcount]; boolean pkok = false;
-        while (run.get()) {
+        while (run) {
           mcSocket.receive(packet);
           String msg = new String(packet.getData(), packet.getOffset(), packet.getLength());
           if (node_maxcount < 5) out("node" + id + "< " + msg);
@@ -102,8 +101,8 @@ public class CryptoBlockChain { // run: 'java BlockChain' or  'java BlockChain <
             boolean current_txn = true; // we want to make sure none of the txns are stored in prev blocks!
             for (Block b = scratch.prev; b.prev != null && (current_txn = Collections.disjoint(b.records, txns)); b = b.prev);
             if (!current_txn) out("-- block contains spent txns, rejecting it: " + msg);
-            else { // proceed.  "Nodes express their acceptance of the block by working on creating the next block in the chain,
-              Block b = new Block(); // using the hash of the accepted block as the previous hash" [1]
+            else {                   // "Nodes express their acceptance of the block by working on creating the next block 
+              Block b = new Block(); //  in the chain, using the hash of the accepted block as the previous hash" [1]
               if (!block_prev.equals(scratch.prev.id)) { // very rare
                 if (block_prev.equals(scratch.prev.prev.id)) { // contestant
                   { b.prev = scratch.prev.prev; scratch.alt = b; } // "save the other branch in case it becomes longe"[1]
@@ -114,7 +113,7 @@ public class CryptoBlockChain { // run: 'java BlockChain' or  'java BlockChain <
               scratch.state = 2; scratch.records.removeAll(txns); // scratch.id = null;
               if (scratch.records.size() != 0) out("-- node"+id+": left out of last seen block: " + Arrays.toString(scratch.records.toArray(new String[0])));
             }
-          } else if (msg.startsWith("PK? " + id + " ?")) mq.push("PK+"); // sender will re-send
+          } else if (msg.startsWith("PK? " + id + " ?")) mq.push("PK+"); // miner thread will re-send
           else if (msg.startsWith("PK ")) {
             String[] ma = msg.split(" "); 
             scratch.pk[Integer.parseInt(ma[1])] = ma[2]; 
