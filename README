@@ -4,17 +4,26 @@ My Tiny Crypto Blockchain Simulator
 Copyright (c) 2018 dmitrynizh
 
 This is a toy but demonstrates many concepts of digital currency,
-peer-to-peer distributed consensus and modern cryptography.
+peer-to-peer distributed consensus mechanisms, secure hashing,
+digital signatures, public key cryptography.
 
-Each java file in this repo is standalone (independent).
-CryptoBlockChain.java is the most complex one. It simulates a
-cryptographic blockchain as outlined in the Bitcoin white paper.
-To compile and run the simulator, you need JDK Java 8 or newer.
+Each lava file in this repo is standalone (independent). Coding style
+in files BlockChain.java, CryptoBlockChain.java and Mine.java is
+deliberately terse because the goal was to fit functionality into small number of lines.
+
+
+File CryptoBlockChain.java
+--------------------------
+This is the most complex one. It simulates the workings of a
+cryptographic blockchain based on proof-of-work as outlined in the
+Bitcoin White Paper.  To compile and run this simulator, you need JDK
+Java 8 or newer.
 
 Compile:   % javac CryptoBlockChain.java
 Run:       $ java CryptoBlockChain
 
-You can alter the behavior by providing command line parameters as integers:
+You can alter the default behavior by providing optional command line
+parameters as integers:
  
 $ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <block-count>
 
@@ -28,8 +37,8 @@ block-count     - The network shuts down after that many blocks were produced. D
 
 Examples:
 
-$ java CryptoBlockChain 5
-$ java CryptoBlockChain 6 7 5 3
+$ java CryptoBlockChain 15
+$ java CryptoBlockChain  7 6 1 5
 
 The parameters coin-difficulty and mining-batch are somewhat coupled
 as in a system with many nodes and transactions it is rarely possible
@@ -42,26 +51,68 @@ consensus is demonstated when all such files are essentially
 identical.
 
 The rest of CryptoBlockChain is as described in the Bitcoin WP
-(Satoshi Nakamoto. Bitcoin: A Peer-to-Peer Electronic Cash System)
-except for the following
+(Satoshi Nakamoto, " Bitcoin: A Peer-to-Peer Electronic Cash System")
+specifically the key mechanisms described in chapters 4 and 5 are
+implemented precisely as described:
 
-(1) no mechanism for the nodes to join and leave the network at will.
-(2) no multiple input transactions (chapter 9)
-(3) sender credibility not verified
+  "4. Proof-of-Work
+  ...The proof-of-work involves scanning for a value that when hashed,
+  such as with SHA-256, the hash begins with a number of zero bits.  For
+  our timestamp network, we implement the proof-of-work by incrementing
+  a nonce in the block until a value is found that gives the block's
+  hash the required zero bits. ..."
+  
+  "5. Network
+  The steps to run the network are as follows:
+  1) New transactions are broadcast to all nodes.
+  2) Each node collects new transactions into a block.
+  3) Each node works on finding a difficult proof-of-work for its block.
+  4) When a node finds a proof-of-work, it broadcasts the block to all nodes.
+  5) Nodes accept the block only if all transactions in it are valid and not 
+     already spent.
+  6) Nodes express their acceptance of the block by working on creating
+     the next block in the chain, using the hash of the accepted block
+     as the previous hash.
+  
+  Nodes always consider the longest chain to be the correct one and will
+  keep working on extending it. If two nodes broadcast different
+  versions of the next block simultaneously, some nodes may receive one
+  or the other first. In that case, they work on the first one they
+  received, but save the other branch in case it becomes longer. The tie
+  will be broken when the next proof-of-work is found and one branch
+  becomes longer..."
+
+At the moment, some mechanisms mentioned in the papers are omitted or
+simplified:
+
+(1) No mechanism for the nodes to join and leave the network at will,
+    all start and terminate at once. As a conseuence, node numbers are
+    employed as unique payment 'addresses'. All nodes assumed to have 
+    enough coins, and currently, all nodes are miners.
+(2) No multiple input transactions (chapter 9).
+(3) No txn links, ch.2, and sender is assumed to have the sum to spend.
 (4) Merkle trees not pruned as described in ch.7, and in fact, not currently kept.
-(5) no transaction fees
-(7) reward is fixed at 50 btc
-(8) nodes can not yet request a missing block (chapter 5)
+(5) No transaction fees.
+(7) Reward is fixed at 50 btc, difficulty is set initially and does not change later
+(8) Nodes can not yet request a missing block (chapter 5) nor can do 
+    simplified payment verification (chapter 8).
+(9) each node uses a single, fixed ECDSA sk/pk pair, does not generate a new pair
+    for each txn as recommended in chapter 10.
 
-Some of these limitations will be removed in future updates.
+Most of these limitations can be fairly easily removed in future
+updates time permitting.  Priority will be given first to (3), then
+perhaps (2), (9), (1) and (4).
 
-The screen log that appears when CryptoBlockChain runs contains what
-nodes broadcast when the number of nodes is greater that 5. With 4 or less nodes, much more
-is logged to facilitate debugging. At the moment the nodes broadcast the following:
+The screen log that appears when CryptoBlockChain runs varies depending on 
+the number of nodes running. For 4 or less nodes, 
+full ECDSA public key strings and signature strings are printed, with 5+ nodes
+these are abbreviated. With 20+ nodes, only new block events are printed out.
+
+At the moment the nodes broadcast the following:
 
 Node's public key  :  PK <address> <pk>
 Node's payment     :  TXN ... <address> ...  <address>  <signature>
-Newly minted block :  BLN <hash> <prev-hash> .....
+Newly minted block :  BLN <hash> <prev-hash> <nonce> ... MINT ... <signature> [TXN ...]*
 Halting broadcast  :  ALL HALT AND DUMP
 Node's pk request  :  PK? <address> >
 
@@ -69,78 +120,147 @@ Node's pk request  :  PK? <address> >
 
 Sample log:
 
-$ java CryptoBlockChain 7 6 3 2
-node0> PK 0 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEut3hbQc5Kt0pX5IjFmbKpxIHDhpTY7c66p1rDdTOkGvJrh3FjTJjuY1soHHuJZ7rymtOUPEhOHArbyXxJ7adeQ==
-node5> PK 5 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE7kmFRGrfFQSOlCPxb+Q8Di7viDaIx/4Tbyx+jBMvn/2adf3R89jMHdjA944/OLCD0tvsrpcrggryNLVls9HQPQ==
-node1> PK 1 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEazjMlgJ+bPFJ10gO9n3gy+dCzcb23Olg6j1vTazR+9VYjFGKEdkp3RmW/2JoceRnCL2iz57sShKGLkLZv2F05A==
-node2> PK 2 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEL+9iAnMIgnRwwU0UGOyxC7HMc5q1lGWK/iejsdV0HtBxdCWVnqc79nwVJzi1/qoTcy/ZN27PJ3foCUTZkhNu6w==
-node3> PK 3 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE8Fih5WgNHJwCj2cH2RJDacSFgZfGXDSMM2XebaZhcHd1bf6jGGEJvjUrxBgIL0EYbxyOBKi2CYM3WpmapRFvzw==
-node4> PK 4 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEkQOAO15i0D+RBnkZ7M9ehKuB/zvHndh7yZXHMKH4lh9QDYVb+85B69vlrXp6xLtqU64jyANIjqrblSwIRTCo+Q==
-node6> PK 6 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEcYpGT8+AuRRqCGT/mFY3hBK78IrGNQ0FZM7ZPhl4lfceB3oCbcDCuU0qISLn7/M2khue5dYty4QUsf7Dr5JB7g==
-node5> TXN at 09:19:34 5 pays 2.338btc to 6 MEUCIQDuKkltAvduvwkub9oNDY27QlD80CMfV+BzXarSl+NPUAIgAr3LfwvlUFlcTiK+pjexPrauRolRnlDQqATWXPCBUKA= 
+$ 
+$ java CryptoBlockChain 7 6 1 5
+node6> PK 6 MFkwEw...b2oDwryQ==
+node2> PK 2 MFkwEw...WgvI65VQ==
+node4> PK 4 MFkwEw...6wKPx8hg==
+node5> PK 5 MFkwEw...ack1sp8g==
+node3> PK 3 MFkwEw...NEyJNByA==
+node1> PK 1 MFkwEw...NdclI51Q==
+node0> PK 0 MFkwEw...UrKlwboQ==
+node6> PK 6 MFkwEw...b2oDwryQ==
+node6> TXN at 18:17:54 6 pays 2.459btc to 0 signed:MEUCIQDy...hxZvVwY= 
 
-node5> BLN 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09  32997199 1519233602372 
-| MINT ! reward 5 with 50btc ! ! MEUCIBdlvlQBl+N7xFLtuD/p3hFDWDh1un4MYvp4H5u0kuO8AiEAoA4PR7TavxVemEDiP74JsTws0xCISaPyleYFOXNAMDQ= 
-, TXN at 09:19:34 5 pays 2.338btc to 6 MEUCIQDuKkltAvduvwkub9oNDY27QlD80CMfV+BzXarSl+NPUAIgAr3LfwvlUFlcTiK+pjexPrauRolRnlDQqATWXPCBUKA= 
+node0> PK 0 MFkwEw...UrKlwboQ==
+node0> TXN at 18:17:59 0 pays 1.255btc to 1 signed:MEQCICPd...QPynVQ== 
 
-node0> TXN at 09:20:07 0 pays 7.320btc to 1 MEYCIQCeY7I06+IcGR9/Otye9LZ8oVkK/LHMu95m2SN4Uw2ObwIhAP+PDkIJfMejh5Sx/x2uPQDa/L+T3S1QhUXfgQwZ/D4L 
+node5> PK 5 MFkwEw...ack1sp8g==
+node5> TXN at 18:18:05 5 pays 6.532btc to 2 signed:MEQCICZ0...Z1x55g== 
 
-node1> TXN at 09:20:07 1 pays 7.015btc to 6 MEUCIH2GDN/H41QN2/uAI1Uta/FYyVK/xGWJUyIVGU2oiUoqAiEA1rrsC8iQKHT0cBABiAtKcnAbrUbgczxciC8zTCmdaIc= 
+node2> PK 2 MFkwEw...WgvI65VQ==
+node2> TXN at 18:18:05 2 pays 6.277btc to 4 signed:MEQCIDyM...6jiQYA== 
 
-node2> TXN at 09:20:10 2 pays 9.191btc to 1 MEUCIQDwaynm6hPtZLB4F/kjNsKYulguQ/RPbcnh9zOlb6drpAIgdgnqb9/uhKbgFxbKnrjTWAj0YMaZg5/1df4cN8Siogw= 
+node2> BLN
+00000078ffdeedeefe8f5e1739c99324a467852f8a5cb69121028971e40ac085
+00
+478080 1519265887635
+| MINT new coins. 2 receives 50btc as reward signed:MEUCIQC+...cSijIRI= 
+, TXN at 18:17:54 6 pays 2.459btc to 0 signed:MEUCIQDy...hxZvVwY= 
+, TXN at 18:17:59 0 pays 1.255btc to 1 signed:MEQCICPd...QPynVQ== 
+, TXN at 18:18:05 2 pays 6.277btc to 4 signed:MEQCIDyM...6jiQYA== 
+, TXN at 18:18:05 5 pays 6.532btc to 2 signed:MEQCICZ0...Z1x55g== 
 
-node3> TXN at 09:20:22 3 pays 0.489btc to 2 MEUCIH0Y/ed1F8pZiw1cDoiVmHDV7sENCEWDk+D2oppfATyzAiEAlcg6IXmG1cFnAIwlc/qRbpNwqaMV9bql2h0zhVTnCO8= 
+node6> PK 6 MFkwEw...b2oDwryQ==
+node6> TXN at 18:18:08 6 pays 9.077btc to 0 signed:MEUCIFcg...CKG9P/w= 
 
-node3> BLN 00000054162c163e3bea7180138feab75dfae8a5d03b006fd1042b339ce87ddf 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09 8186346 1519233633390 
-| MINT ! reward 3 with 50btc ! ! MEUCIFUBpUNr6tMrBB9J/lzzEsveHaNfztSpkDRUTyldSqcpAiEAy4JuVUH2lWdKtGqm7eY6Mrr6ju59dKr075LDdDoR97g= 
-, TXN at 09:20:07 0 pays 7.320btc to 1 MEYCIQCeY7I06+IcGR9/Otye9LZ8oVkK/LHMu95m2SN4Uw2ObwIhAP+PDkIJfMejh5Sx/x2uPQDa/L+T3S1QhUXfgQwZ/D4L 
-, TXN at 09:20:07 1 pays 7.015btc to 6 MEUCIH2GDN/H41QN2/uAI1Uta/FYyVK/xGWJUyIVGU2oiUoqAiEA1rrsC8iQKHT0cBABiAtKcnAbrUbgczxciC8zTCmdaIc= 
-, TXN at 09:20:10 2 pays 9.191btc to 1 MEUCIQDwaynm6hPtZLB4F/kjNsKYulguQ/RPbcnh9zOlb6drpAIgdgnqb9/uhKbgFxbKnrjTWAj0YMaZg5/1df4cN8Siogw= 
-, TXN at 09:20:22 3 pays 0.489btc to 2 MEUCIH0Y/ed1F8pZiw1cDoiVmHDV7sENCEWDk+D2oppfATyzAiEAlcg6IXmG1cFnAIwlc/qRbpNwqaMV9bql2h0zhVTnCO8= 
+node6> BLN
+000000029f73ce6d3416b56849d56ba08f4a4cb5a8ba41958cf064a8a383e4fc
+00000078ffdeedeefe8f5e1739c99324a467852f8a5cb69121028971e40ac085
+463899 1519265890498
+| MINT new coins. 6 receives 50btc as reward signed:MEUCIFbg...BeJOQH4= 
+, TXN at 18:18:08 6 pays 9.077btc to 0 signed:MEUCIFcg...CKG9P/w= 
 
-node3> ALL HALT AND DUMP
-node3 listener exiting.
-node1 listener exiting.
-node4 listener exiting.
-node0 listener exiting.
-node2 listener exiting.
-node5 listener exiting.
-node6 listener exiting.
-node5 sender exiting.
-node0 sender exiting.
+node3> PK 3 MFkwEw...NEyJNByA==
+node3> TXN at 18:18:12 3 pays 3.870btc to 6 signed:MEUCIG76...OcJBdeA= 
+
+node3> BLN
+00000083bdc1509c423afc03b8b25192b1f10280484504514b24dbc07f286db7
+000000029f73ce6d3416b56849d56ba08f4a4cb5a8ba41958cf064a8a383e4fc
+11468879 1519265909424
+| MINT new coins. 3 receives 50btc as reward signed:MEUCIAcn...Am7xqWg= 
+, TXN at 18:18:12 3 pays 3.870btc to 6 signed:MEUCIG76...OcJBdeA= 
+
+node3> BLN
+000000083b1eee5f09574a5a6778960c5adeb0dddb1f31a8cbfccbd4698a2a10
+00000083bdc1509c423afc03b8b25192b1f10280484504514b24dbc07f286db7
+845618 1519265911133
+| MINT new coins. 3 receives 50btc as reward signed:MEQCIH4p.../5vZrg== 
+
+node4> PK 4 MFkwEw...6wKPx8hg==
+node5> PK 5 MFkwEw...ack1sp8g==
+node4> TXN at 18:18:34 4 pays 9.922btc to 0 signed:MEYCIQDU...F1jSf/0M 
+
+node5> TXN at 18:18:35 5 pays 6.761btc to 6 signed:MEQCIELF...nAtmfw== 
+
+node3> PK 3 MFkwEw...NEyJNByA==
+node3> TXN at 18:18:37 3 pays 9.820btc to 6 signed:MEUCIC5E...+V/dfTc= 
+
+node1> PK 1 MFkwEw...NdclI51Q==
+node3> BLN
+000000bb0c5db06668952a53c6db3633a8012d56236a4d341dd68c2702a38705
+000000083b1eee5f09574a5a6778960c5adeb0dddb1f31a8cbfccbd4698a2a10
+1694875 1519265921748
+| MINT new coins. 3 receives 50btc as reward signed:MEQCIC+C...bxX6Sw== 
+, TXN at 18:18:34 4 pays 9.922btc to 0 signed:MEYCIQDU...F1jSf/0M 
+, TXN at 18:18:35 5 pays 6.761btc to 6 signed:MEQCIELF...nAtmfw== 
+, TXN at 18:18:37 3 pays 9.820btc to 6 signed:MEUCIC5E...+V/dfTc= 
+
 node3 sender exiting.
-node6 sender exiting.
-node2 sender exiting.
+node1> ALL HALT AND DUMP
+node4 listener exiting.
+node6 listener exiting.
+node0 listener exiting.
+node5 listener exiting.
+node1 listener exiting.
+node3 listener exiting.
+node2 listener exiting.
 node4 sender exiting.
 node1 sender exiting.
-$ 
+node2 sender exiting.
+node6 sender exiting.
+node0 sender exiting.
+node5 sender exiting.
+$
 
-All ledgers saved on disk by each node are identical. Example:
+This run results in 6 ledgers - blockchain0.txt, blockchain1.txt, etc
+- saved to current directory, one for each node.  All ledgers are
+identical and list the blocks that were accepted by the nodes:
 
-blockchain5.txt
----------------
-
-
- hash: 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09
- prev: 
-nonce: 32997199 Wed Feb 21 09:20:02 PST 2018 
-[MINT ! reward 5 with 50btc ! ! MEUCIBdlvlQBl+N7xFLtuD/p3hFDWDh1un4MYvp4H5u0kuO8AiEAoA4PR7TavxVemEDiP74JsTws0xCISaPyleYFOXNAMDQ= 
-, TXN at 09:19:34 5 pays 2.338btc to 6 MEUCIQDuKkltAvduvwkub9oNDY27QlD80CMfV+BzXarSl+NPUAIgAr3LfwvlUFlcTiK+pjexPrauRolRnlDQqATWXPCBUKA= 
+=== BLOCK ===
+ hash: 00000078ffdeedeefe8f5e1739c99324a467852f8a5cb69121028971e40ac085
+ prev: 00
+nonce: 478080 minted: Wed Feb 21 18:18:07 PST 2018 
+[MINT new coins. 2 receives 50btc as reward MEUCIQC+DfBtV3modCAm1EcucbVHfmQ5JtdbPfzbQ8LRIG7juQIgOEjLxOWmjH4UY0c4z0GpPgHWZpaW6psVpb/HcSijIRI= 
+, TXN at 18:17:54 6 pays 2.459btc to 0 MEUCIQDyrqdIe0Kq6ABLiqSdh/2IzUQie4BAElc/StlkfkstvQIgN+w+bqTrR8ntPd3wlaeJ7oIPIWyMFZQKCaNRhxZvVwY= 
+, TXN at 18:17:59 0 pays 1.255btc to 1 MEQCICPdTFC1qccRWw7kaRJn6ZTc+1g+C7Cs3ms8V9rrUL9/AiAcZP+dfouUOM4bBjn5p3DhbYHrDmdGwJIX6JmHQPynVQ== 
+, TXN at 18:18:05 2 pays 6.277btc to 4 MEQCIDyM1kOHPWkYw6c2leX4bg0HOsMzpR599p858p75DtZYAiBh/HX2VCBjnfLDNG5/7Jouz2iQi97iKav7bWGT6jiQYA== 
+, TXN at 18:18:05 5 pays 6.532btc to 2 MEQCICZ0qgTmwRAUZ4uWV60sksCF0+LEU1Mwx4rpazeiwkI7AiAWEW9tnxd0aUcNA60eJXZ0ovDlWA8Mh8F6ek3nZ1x55g== 
 ]
 
-
- hash: 00000054162c163e3bea7180138feab75dfae8a5d03b006fd1042b339ce87ddf
- prev: 000000b227fa224230f7e168fef2bd07e66d7fa26d0e356512217541a8216f09
-nonce: 8186346 Wed Feb 21 09:20:33 PST 2018 
-[MINT ! reward 3 with 50btc ! ! MEUCIFUBpUNr6tMrBB9J/lzzEsveHaNfztSpkDRUTyldSqcpAiEAy4JuVUH2lWdKtGqm7eY6Mrr6ju59dKr075LDdDoR97g= 
-, TXN at 09:20:07 0 pays 7.320btc to 1 MEYCIQCeY7I06+IcGR9/Otye9LZ8oVkK/LHMu95m2SN4Uw2ObwIhAP+PDkIJfMejh5Sx/x2uPQDa/L+T3S1QhUXfgQwZ/D4L 
-, TXN at 09:20:07 1 pays 7.015btc to 6 MEUCIH2GDN/H41QN2/uAI1Uta/FYyVK/xGWJUyIVGU2oiUoqAiEA1rrsC8iQKHT0cBABiAtKcnAbrUbgczxciC8zTCmdaIc= 
-, TXN at 09:20:10 2 pays 9.191btc to 1 MEUCIQDwaynm6hPtZLB4F/kjNsKYulguQ/RPbcnh9zOlb6drpAIgdgnqb9/uhKbgFxbKnrjTWAj0YMaZg5/1df4cN8Siogw= 
-, TXN at 09:20:22 3 pays 0.489btc to 2 MEUCIH0Y/ed1F8pZiw1cDoiVmHDV7sENCEWDk+D2oppfATyzAiEAlcg6IXmG1cFnAIwlc/qRbpNwqaMV9bql2h0zhVTnCO8= 
+=== BLOCK ===
+ hash: 000000029f73ce6d3416b56849d56ba08f4a4cb5a8ba41958cf064a8a383e4fc
+ prev: 00000078ffdeedeefe8f5e1739c99324a467852f8a5cb69121028971e40ac085
+nonce: 463899 minted: Wed Feb 21 18:18:10 PST 2018 
+[MINT new coins. 6 receives 50btc as reward MEUCIFbg4AQOJzFedinvVIReSLB52ZMkIlK2JdMlGcBN/+jiAiEAm3c70nf61zvjIDtL1EjhDckVtGODF4QOr+OzBeJOQH4= 
+, TXN at 18:18:08 6 pays 9.077btc to 0 MEUCIFcgRpfOWb7707f4duWpGjoYmouMFclzItwE9Xpc4yBFAiEAuPDv1UPy2D/K5kL25UBT8G4BA9IS6WT5gw9ACKG9P/w= 
 ]
 
+=== BLOCK ===
+ hash: 00000083bdc1509c423afc03b8b25192b1f10280484504514b24dbc07f286db7
+ prev: 000000029f73ce6d3416b56849d56ba08f4a4cb5a8ba41958cf064a8a383e4fc
+nonce: 11468879 minted: Wed Feb 21 18:18:29 PST 2018 
+[MINT new coins. 3 receives 50btc as reward MEUCIAcnM8SxPogakqp5b479nLh/ph0w13T+3I6S15mEwruRAiEA2f440NP3F27XOwmwUrZM/lWUWdQYu9csi0GCAm7xqWg= 
+, TXN at 18:18:12 3 pays 3.870btc to 6 MEUCIG76mf8t2oA9jvkVe6RV7lqapzShoN2IIY/QHbu18tWvAiEAi7l0ApUBiuAbPm0LP55XD4+G/j1aMjXJWsAaOcJBdeA= 
+]
 
----------------
+=== BLOCK ===
+ hash: 000000083b1eee5f09574a5a6778960c5adeb0dddb1f31a8cbfccbd4698a2a10
+ prev: 00000083bdc1509c423afc03b8b25192b1f10280484504514b24dbc07f286db7
+nonce: 845618 minted: Wed Feb 21 18:18:31 PST 2018 
+[MINT new coins. 3 receives 50btc as reward MEQCIH4p/x9guylXGll/J4fz4W+CvWGKrR/Lx6NdP5C+DNSPAiB1NZootAB828XnV6iLEHD8EBPSDhGT01Uh3VT0/5vZrg== 
+]
+
+=== BLOCK ===
+ hash: 000000bb0c5db06668952a53c6db3633a8012d56236a4d341dd68c2702a38705
+ prev: 000000083b1eee5f09574a5a6778960c5adeb0dddb1f31a8cbfccbd4698a2a10
+nonce: 1694875 minted: Wed Feb 21 18:18:41 PST 2018 
+[MINT new coins. 3 receives 50btc as reward MEQCIC+CdqBAwGLP+nOlvTASsf/1MxJ+UQya7TeF9QU16pKJAiAXevsGTbNY0Fi7Zw1D5KWKrQRXI+L8igDuy8YebxX6Sw== 
+, TXN at 18:18:34 4 pays 9.922btc to 0 MEYCIQDU/czBAtrVNqzmaSybYI9OTw0Dp/iGs3wOX93UXMozGAIhAP8MahoqksY7SHdbwuSZ3wg3+iMzVjGTrwZdF1jSf/0M 
+, TXN at 18:18:35 5 pays 6.761btc to 6 MEQCIELFAlVXqRNrUVgxjAM2wQyF/+ZpGYPYLib0zmgOuW31AiAdZwtksuJ4kJV+UFUmtfXyyBULiV2qz6e/D3UBnAtmfw== 
+, TXN at 18:18:37 3 pays 9.820btc to 6 MEUCIC5EqM+pPYuRHZsCbiA+NbINoaE9F3UoubnNVbTGrQe+AiEAlrRV9Eu08M29oFuZlPk4pV3FiMmqvvqJ3AXF+V/dfTc= 
+]
+
 
 Other files in the repo demonstrate various aspects of blockchain or cryptography:
 
@@ -151,7 +271,10 @@ Merkle.java     - simple demonstration of Merkle trees
 Mine.java       - standalone (single-node) bitcoin-like hash mining engine
 VerSig.java     - initially derived from Java tutorial, expanded and re-written
 
-All code is under MIT Licencse. Copyright (c) 2018 dmitrynizh
+
+All code is under MIT Licencse. 
+
+Copyright (c) 2018 dmitrynizh
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
