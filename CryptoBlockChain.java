@@ -2,15 +2,15 @@ import java.util.*; import java.io.*; import java.net.*; import java.math.*; imp
 import java.security.*; import java.security.spec.*; import static java.nio.charset.StandardCharsets.UTF_8; 
 public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static class Block { String id, pk[]; int state, nonce; Block prev, alt; Set<String> records; long stamp;}
-  static int node_maxcount, blk_difficulty, effort, max_blocks; static volatile boolean run = true;
+  static int nodes, difficulty, effort, max_blocks; static volatile boolean run = true;
   final static AtomicInteger block_count = new AtomicInteger(1);
   public static void main(String[] args) throws Exception { // run network
-    node_maxcount  = (args.length > 0) ? Integer.parseInt(args[0]) : 7;
-    blk_difficulty = (args.length > 1) ? Integer.parseInt(args[1]) : 6;
-    effort         = (args.length > 2) ? 10000000*Integer.parseInt(args[2]) : 10000000;
-    max_blocks     = (args.length > 3) ? Integer.parseInt(args[3]) : 10;
+    nodes      = (args.length > 0) ? Integer.parseInt(args[0]) : 7;
+    difficulty = (args.length > 1) ? Integer.parseInt(args[1]) : 6; if (difficulty <= 10) difficulty *= 8;
+    effort     = (args.length > 2) ? 10000000*Integer.parseInt(args[2]) : 10000000;
+    max_blocks = (args.length > 3) ? Integer.parseInt(args[3]) : 10;
     Block zero = new Block(); zero.stamp = System.currentTimeMillis(); zero.id = "00";
-    for (int i = 0; i < node_maxcount; i++) startNode(i, zero, InetAddress.getByName("230.1.1.1"));
+    for (int i = 0; i < nodes; i++) startNode(i, zero, InetAddress.getByName("230.1.1.1"));
   }
   static void startNode(int id, Block zero, InetAddress ip) throws Exception {
     Block b = new Block(); b.prev = zero; b.state = 2; b.records = new TreeSet<>((x, y)->x.compareTo(y));
@@ -35,10 +35,10 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
             header = hexStringToBytes(scratch.prev.id + root + "00000000");
             nonce_idx = header.length-4; nonce = 0; scratch.state = 0;
           } // "Each node works on finding a difficult proof-of-work for its block" - see reference [1].
-          for (int lim = randN(effort), i = 0; i <  lim && mq.isEmpty(); i++, nonce++) { // randN(effort) sets duration
+           for (int lim = randN(effort), i = 0; i <  lim && mq.isEmpty(); i++, nonce++) { // randN(effort) sets duration
             for (int x = 0, z = 24; x < 4; x++, z-=8) header[nonce_idx+x] = (byte)(nonce >>> z); // convert int to 4 bytes
             byte[] hash = md.digest(header);
-            if (fit_p(hash, blk_difficulty) && scratch.state == 0) { // mined new block!!
+            if (fit_p(hash, difficulty) && scratch.state == 0) { // mined new block!!
               scratch.id = toHex(hash); scratch.stamp = System.currentTimeMillis(); scratch.state = 2; 
               mq.push(String.format("BLN\n%s\n%s\n%d %d\n|", scratch.id, scratch.prev.id, nonce, scratch.stamp) 
                       + txt(scratch).replace('[', ' ').replace(']', ' '));
@@ -46,15 +46,15 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
             } 
           } 
           if (mq.isEmpty() && randN(100) < 15)  { // in 15% cases, send payment to random-chosen node
-            mq.push(sign(String.format("TXN at %tT %d --> %.3fbtc to %d",new Date(), id, 10*Math.random(), randN(1000)%node_maxcount), sk));
+            mq.push(sign(String.format("TXN at %tT %d --> %.3fbtc to %d",new Date(), id, 10*Math.random(), randN(1000)%nodes), sk));
             mq.push(pkinfo);
           }
           if (!mq.isEmpty()) { // from [1]: "New transactions are broadcast to all nodes"
             String msgstr = mq.pop(); if (msgstr.equals("PK+")) msgstr = pkinfo;
             byte[] msg = msgstr.getBytes(); if (!msgstr.startsWith("BLN")) Thread.sleep(randN(700)); // still needed
             udpSocket.send(new DatagramPacket(msg, msg.length, ip, 9090));
-            if (node_maxcount <= 10  || msgstr.startsWith("BLN")) { // log it
-              if (node_maxcount >= 5) { // reduce clutter
+            if (nodes <= 10  || msgstr.startsWith("BLN")) { // log it
+              if (nodes >= 5) { // reduce clutter
                 String[] a = msgstr.split(" "); 
                 for (int i = 2; i< a.length; i++) { a[i] = abbrev("-- ", abbrev("", a[i], 6, 124), 6, 96); }
                 msgstr = String.join(" ", a);
@@ -76,11 +76,11 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
         MulticastSocket mcs = new MulticastSocket(9090); mcs.joinGroup(ip);
         DatagramPacket packet = new DatagramPacket(new byte[4*1024], 4*1024); 
         Signature sig = Signature.getInstance("SHA256withECDSA");
-        scratch.pk = new String[node_maxcount]; boolean pkok = false;
+        scratch.pk = new String[nodes]; boolean pkok = false;
         while (run) {
           mcs.receive(packet); // this call blocks until something arrives
           String msg = new String(packet.getData(), packet.getOffset(), packet.getLength());
-          if (node_maxcount < 5) out("node" + id + "< " + msg);
+          if (nodes < 5) out("node" + id + "< " + msg);
           if (msg.startsWith("TXN") && !scratch.records.contains(msg)) { // add new record and set state to 1
             if (!pkok) { // time to validate the private key array
               pkok = true; String[] a = scratch.pk;
@@ -111,7 +111,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
               b.id = header_arr[1]; b.nonce = Integer.parseInt(header_arr[3]); b.stamp = Long.parseLong(header_arr[4]); 
               (b.records = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns);
               scratch.state = 2; scratch.records.removeAll(txns); // scratch.id = null;
-              if (node_maxcount < 5 && scratch.records.size() != 0) out("node"+id+": not in the accepted block: " + txt(scratch));
+              if (nodes < 5 && scratch.records.size() != 0) out("node"+id+": not in the accepted block: " + txt(scratch));
             }
           } else if (msg.startsWith("PK? " + id + " ?")) mq.push("PK+"); // miner thread will re-send
           else   if (msg.startsWith("PK ")) { String[] a = msg.split(" "); scratch.pk[Integer.parseInt(a[1])] = a[2]; } 
@@ -129,11 +129,9 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static String out(String s) { System. out.println(s); return s; }
   static String txt(Block b) { return Arrays.toString(b.records.toArray(new String[0])); }
   static boolean fit_p(byte[] hash, int difficulty) { // does hash have given difficulty?
-    int zerobytes = difficulty/2, half = difficulty%2;
-    boolean success = true;
-    for (int i = 0; i < zerobytes && success; i++) if (hash[i] != 0) success = false;
-    if (success && half != 0 && (hash[zerobytes] & 0xf0) != 0) success = false;
-    return success;
+    int zerobytes = difficulty/2/8, rem = difficulty%8, lim = 1 << (8-rem);
+    for (int i = 0; i < zerobytes; i++) if (hash[i] != 0) return false;
+    return ((int)hash[zerobytes] & 0xff) < lim;
   }
   static String toHex(byte[] data) {
     StringBuilder sb = new StringBuilder();
