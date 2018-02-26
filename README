@@ -117,7 +117,7 @@ simplified:
 Most of these limitations can be fairly easily removed in future
 updates time permitting.  Priority will be given first to (2), (1) and (4).
 
-No attempt was made to copy-cat any implementation details of real
+No attempt was made to copycat any implementation details of real
 bitcoin clients, wallets, APIs, protocols, layouts, representations,
 'address' size and encodings etc.  The goal was to produce Clean-Room
 simulation based solely on what is specified in [1], with simple and
@@ -526,7 +526,6 @@ nonce: 1355619
 MINT new BTC coins aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKtngbk53isG35VwyKcGFycTDb3zCJEF5R5NnpERWZPTgwUTnwZmBE2Ah5F5FwdrC5fJLwvhD9rG2Cx8t3Lax3445 50.0 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKtngbk53isG35VwyKcGFycTDb3zCJEF5R5NnpERWZPTgwUTnwZmBE2Ah5F5FwdrC5fJLwvhD9rG2Cx8t3Lax3445 mining reward SIG iKx1CJPA31XhdiYmJEJRdrAgbn4m6uMdGAKrVydmEitUXVza1Uy339hwYwpjSGRRhoyq6W1KtQ9pnNUcn2DN79AzCrDBCJq6ub 
 52U4mV9rZh9kiHQaXwM6WnGcsN5gSo1Qbf74nZuiAmFg
 TXN 18:45:43 0 7ECpb1k6Lnp3yYtwExqcbFMyHehPjPJNmkuZNmAXmAc7 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTFWB7Cr2q7Ekz3kNYDPyAtwFWZ8H6jnW296YDYBrRhoai9qpaFXbn4Sn2ELoDYZnrjmjoe8tdDguNkZVkHsw9PoN2 30.000 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTHkGpWzAyZVgZwU9mNiQZu6JCN9ojoqGxFxi37f2Fy6nKx1WSgjiJprroCWThTwFi9A9ZrGr5H37GHH71aMyDH7bW 20.000 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTGhUpaD3dkz3PWrAfCDwo4JqFaaPoNpQDcfBgR394JrxXaobZciABRuBSmi8MJH4Thq6acmuMDpj5TYkNAj5yinUu SIG iKx1CJLbbUPcZfg9vhYisax8rdKCHfhkA2BijF9QQ1XDYyDJT4gfSKLpEywkXA5Nmyy1E4wSQQb8pie4SWpo3xQEmwXb6yv2do 
-
 
 
 
