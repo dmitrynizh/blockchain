@@ -102,24 +102,33 @@ implemented precisely as described:
 At the moment, some mechanisms mentioned in the paper are omitted or
 simplified:
 
-(1) No mechanism for the nodes to join and leave the network at will,
-    all start and terminate at once. 
-(2) No multiple input transactions (chapter 9).
-(3) Nodes can not yet request a missing block (chapter 5) nor can do 
-    simplified payment verification (chapter 8).
+(1) In each process started as described above, all nodes start and terminate at once
+    and maintain consensus.  When multiple proceess run, nodes can 
+    join and leave the common network  at will, however nodes can not yet 
+    request a missing block or current blockchain (chapter 5). 
+    This currently does nto allow to establish consensus across separate processes.
+(2) No multiple input transactions (chapter 9) or varaiable number of outputs.
+    Currently, CryptoBlockChain supports txns with single input and two outputs.
+(3) simplified payment verification (chapter 8) not implemented yet.
 (4) Merkle trees not pruned as described in ch.7, and in fact, not currently kept.
-(5) No transaction fees.
-(7) Reward is fixed at 50 btc, difficulty is set initially and does not change later
+(5) No transaction fees. the input must be equal to the output sum.
+(7) Reward is fixed at 50 btc, difficulty is set initially and does not change later.
 
 Most of these limitations can be fairly easily removed in future
 updates time permitting.  Priority will be given first to (2), (1) and (4).
 
 No attempt was made to copy-cat any implementation details of real
-bitcoin clients, wallets, APIs, protocols, layouts,
-representations. The goal was to produce Clean-Room simulation based
-solely on what is specified in the Bitcoin WP. Notable exceptions are
-(1) use of ECDSA and (2) switch from base64 to base58 in later
-updates. Another is FORTH-like nature of white-space separated packet
+bitcoin clients, wallets, APIs, protocols, layouts, representations,
+'address' size and encodings etc.  The goal was to produce Clean-Room
+simulation based solely on what is specified in [1]. Hence,
+for instance, packets are sequence of space separate words and not
+byte streams, and 'addresses' are public keys, not hashes of them as
+in 'real' Bitcoin. As [1] does not outline wallets, Node's wallet is a
+simple collection of KeyPair objects, not a sophistcated asset
+manager. Notable exceptions are (1) use of ECDSA in CryptoBlockChain
+and (2) switch from base64 to base58 in later updates of it. I felt
+that base64 is irritating and base58 is much more pleasant to deal
+with. Another is FORTH-like nature of white-space separated packet
 data. After getting familiar with [1] and also hearing about Etherium
 contracts being programs [2], and being a FORTH enthusiast since
 mid-1980s [4], I felt natural to view my TXN/BLN/MINT packet formats,
