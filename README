@@ -552,6 +552,7 @@ References
     https://github.com/bitcoin/bitcoin/blob/master/src/script/interpreter.cpp
 [4] dmitrynizh, "Live FORTH" System (mainly in Russian) http://www.dmitrynizh.com/radio86/baranov.htm
 
+
 Licence
 -------
 
@@ -576,7 +577,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-
-
-
