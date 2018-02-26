@@ -58,10 +58,10 @@ $ java CryptoBlockChain 15
 $ java CryptoBlockChain  7 6 1 5
 $ java CryptoBlockChain  7 50 1 5 # as above but with extra two zero bits
 
-The parameters <coin-difficult>y and <mining-batch> are somewhat coupled
-as in a system with many nodes and transactions it is rarely possible
-to mine with high difficulty in a small number of iterations before
-accepting new transactions and blocks.
+The parameters <coin-difficult>y and <mining-batch> are somewhat
+coupled as in a system with many nodes and transactions it is rarely
+possible to mine with high difficulty in a small number of iterations
+before accepting new transactions and blocks.
 
 When the network reaches the block-count goal, nodes start shutting
 down. Each node saves its blockchain ledger onto the disk.  The
@@ -102,20 +102,22 @@ implemented precisely as described:
 At the moment, some mechanisms mentioned in the paper are omitted or
 simplified:
 
-(1) In each process started as described above, all nodes start and terminate at once
-    and maintain consensus.  When multiple proceess run, nodes can 
-    join and leave the common network  at will, however nodes can not yet 
-    request a missing block or current blockchain (chapter 5). 
-    This currently does nto allow to establish consensus across separate processes.
-(2) No multiple input transactions (chapter 9) or varaiable number of outputs.
+(1) In each process started as described above, all nodes start and 
+    terminate at once  and maintain consensus.  When multiple processes run, 
+    nodes can join and leave the common network at will, however latecomer
+     nodes can not yet request a missing block or current blockchain (chapter 5). 
+    This currently does not allow to establish consensus across separate processes.
+(2) No multiple input transactions (chapter 9) or variable number of outputs.
     Currently, CryptoBlockChain supports txns with single input and two outputs.
-(3) simplified payment verification (chapter 8) not implemented yet.
+(3) "Simplified payment verification" (chapter 8) not implemented.
 (4) Merkle trees not pruned as described in ch.7, and in fact, not currently kept.
 (5) No transaction fees. the input must be equal to the output sum.
-(7) Reward is fixed at 50 btc, difficulty is set initially and does not change later.
+(6) Reward is fixed at 50 btc.
+(7) Difficulty is set initially and does not adjust to control block frequency.
 
 Most of these limitations can be fairly easily removed in future
-updates time permitting.  Priority will be given first to (2), (1) and (4).
+updates time permitting.  Priority will be given first to (2), (1),
+then (4), (7).
 
 No attempt was made to copycat any implementation details of real
 bitcoin clients, wallets, APIs, protocols, layouts, representations,
