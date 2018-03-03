@@ -14,7 +14,7 @@
 // Spending history
 // you spent|redeemed: 50.0 on key aaaaaa.
 // you spent|redeemed: 70.0 on key dddddd.
-//
+// ...
 
 import java.util.*; 
 import java.io.*; 
@@ -25,7 +25,40 @@ public class Streams { // (c) 2018 dmitrynizh. MIT License.
   static class Block { Block prev; HashMap<String,String>d;}
   static class Cred { String pk; PrivateKey sk; Cred(String p, PrivateKey s) {pk=p;sk=s;}} 
   static final String E = "";
-  public static void main(String[] args) { // run demo
+
+  static String get(String k, Block b)  { String r=null; for (; b.prev != null && r == null; b = b.prev) r = b.d.get(k); return r; }
+  static String gall(String k, Block b) { String v,r=E;  for (; b.prev != null; b = b.prev) if ((v=b.d.get(k))!=null) r+=v; return r; }
+  static double toD(String v) { return Double.parseDouble(v); } 
+  static int    toI(String v) { return Integer .parseInt(v);  }
+
+  // no generics helper
+  static Stream<Cred> sCred(Collection<Cred> c) { return c.stream(); }
+  // this one makes the above not needed.
+  static <T>   Stream<T> seq(Collection<T> c)   { return c.stream(); }
+  // saves space in long map-reduce chains
+  static <T>   Stream<T> seq(T[] a) { return Arrays.stream(a); }
+
+  // same
+  static <X,Y> Stream<Y> map(X[] a,          Function<? super X,? extends Y> f) { return seq(a).map(f); }
+  static <X,Y> Stream<Y> map(Collection<X>c, Function<? super X,? extends Y> f) { return seq(c).map(f); }
+
+  // top-level consumer which is concatenator reducer-printer
+  static <T> void log(PrintWriter pw, String hdr, String sep, Stream<T> s) { pw.println(s.map(e->""+e).reduce(hdr,(a,b)->a+sep+b)); }
+
+  // saves space in long map-reduce chains
+  @SuppressWarnings("unchecked") // from Stackoverflow
+  static <T> T[] toA(Collection<T> c) { return c.toArray((T[])java.lang.reflect.Array.newInstance(c.getClass(), c.size())); }
+
+  static void printTotalBalance(PrintWriter bpw, Block b, Vector<Cred> w) {
+    double sum = map(w,c->gall(c.pk,b)).filter(v->v!=E)
+      .mapToDouble(s->map(s.split("/"),v->v.split(":"))
+                   .filter(v->get(v[1]+":"+v[2],b)==null)
+                   .mapToDouble(v->toD(v[0])).sum()).sum();
+    bpw.printf("At %tc my balance: %.3f \n", new Date(), sum); bpw.flush();
+  }
+
+  // run demo
+  public static void main(String[] args) { 
     try (PrintWriter bpw = new PrintWriter(System.out)) {
 
         // create chain of blocks
@@ -91,7 +124,7 @@ public class Streams { // (c) 2018 dmitrynizh. MIT License.
         String bal = "Wallet balances\n", sp = "Spending history\n";
         for (Cred c : w) { String have = E, spent = E;
           for (String txo : gall(c.pk,s).split("/")) 
-            if (txo != E) { String a = txo.split(":"); 
+            if (txo != E) { String a[] = txo.split(":"); 
               if (get(a[1]+":"+a[2],s)==null) have  += a[0] + " ";
               else spent += a[0] + " ";
             }
@@ -100,46 +133,46 @@ public class Streams { // (c) 2018 dmitrynizh. MIT License.
         }
         bpw.printf("\n%s\n%s\n", bal, sp); bpw.flush();
 
-          
-        
-        
+        // So, the loops do not appears more verbose, but seem a bit less cryptic
 
+        // What about performance - do streams slow down string
+        // splitting and concatenation intensive code in any
+        // significant way?
+        long time = System.currentTimeMillis(), iter = 200000;
+        for (int i = 0; i < iter; i++) {
+         bal = "\nWallet balances\n" +
+           map(w,c->gall(c.pk,s)+" on key "+c.pk+".\n: : :").filter(st->!st.startsWith(" on"))
+           .map(st->map(st.split("/"),e->e.split(":"))
+                .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)==null).map(a->a[0]).reduce("you have available: ",(a,b)->a+" "+b))
+           .map(v->v.replaceAll(" +", " ")).filter(v->v.indexOf(": on")<0).map(e->""+e).reduce("",(a,b)->a+"\n"+b);
+         sp = "Spending history\n" +
+           map(w,c->gall(c.pk,s)+" on key "+c.pk+".\n: : :").filter(st->!st.startsWith(" on"))
+           .map(st->map(st.split("/"),e->e.split(":"))
+                .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)!=null).map(a->a[0]).reduce("you spent|redeemed: ",(a,b)->a+" "+b))
+           .map(v->v.replaceAll(" +", " ")).filter(v->v.indexOf(": on")<0).map(e->""+e).reduce("",(a,b)->a+"\n"+b);
+        }
+        time = System.currentTimeMillis() - time;
+        bpw.printf("Streams: elapsed time is %.1fs or %.3fms per report\n", ((double)time)/1000, ((double)time)/iter); bpw.flush();
+        time = System.currentTimeMillis();
+        for (int i = 0; i < iter; i++) {
+          bal = "Wallet balances\n"; sp = "Spending history\n";
+          for (Cred c : w) { String have = E, spent = E;
+            for (String txo : gall(c.pk,s).split("/")) 
+              if (txo != E) { String a[] = txo.split(":"); 
+                if (get(a[1]+":"+a[2],s)==null) have  += a[0] + " ";
+                else spent += a[0] + " ";
+              }
+            if (have !=E) bal += "you have available: " + have + "on key " + c.pk + "\n";
+            if (spent!=E) sp  += "you spent|redeemed: " + spent+ "on key " + c.pk + "\n";
+          }
+        }
+        time = System.currentTimeMillis() - time;
+        bpw.printf("loops  : elapsed time is %.1fs or %.3fms per report\n", ((double)time)/1000, ((double)time)/iter); bpw.flush();
 
+        // So.. streams slow TxO lookup and analysis (quite inneficient by itself) by ~ factor 6.
 
       } catch (Exception ex) { ex.printStackTrace(); }
   }
-
-  static void printTotalBalance(PrintWriter bpw, Block b, Vector<Cred> w) {
-    double sum = map(w,c->gall(c.pk,b)).filter(v->v!=E)
-      .mapToDouble(s->map(s.split("/"),v->v.split(":"))
-                   .filter(v->get(v[1]+":"+v[2],b)==null)
-                   .mapToDouble(v->toD(v[0])).sum()).sum();
-    bpw.printf("At %tc my balance: %.3f \n", new Date(), sum); bpw.flush();
-  }
-
-  static String get(String k, Block b)  { String r=null; for (; b.prev != null && r == null; b = b.prev) r = b.d.get(k); return r; }
-  static String gall(String k, Block b) { String v,r=E;  for (; b.prev != null; b = b.prev) if ((v=b.d.get(k))!=null) r+=v; return r; }
-  static double toD(String v) { return Double.parseDouble(v); } 
-  static int    toI(String v) { return Integer .parseInt(v);  }
-
-  // no generics helper
-  static Stream<Cred> sCred(Collection<Cred> c) { return c.stream(); }
-  // this one makes the above not needed.
-  static <T>   Stream<T> seq(Collection<T> c)   { return c.stream(); }
-  // saves space in long map-reduce chains
-  static <T>   Stream<T> seq(T[] a) { return Arrays.stream(a); }
-
-  // same
-  static <X,Y> Stream<Y> map(X[] a,          Function<? super X,? extends Y> f) { return seq(a).map(f); }
-  static <X,Y> Stream<Y> map(Collection<X>c, Function<? super X,? extends Y> f) { return seq(c).map(f); }
-
-  // top-level consumer which is concatenator reducer-printer
-  static <T> void log(PrintWriter pw, String hdr, String sep, Stream<T> s) { pw.println(s.map(e->""+e).reduce(hdr,(a,b)->a+sep+b)); }
-
-  // saves space in long map-reduce chains
-  @SuppressWarnings("unchecked") // from Stackoverflow
-  static <T> T[] toA(Collection<T> c) { return c.toArray((T[])java.lang.reflect.Array.newInstance(c.getClass(), c.size())); }
-
 }
 
 
