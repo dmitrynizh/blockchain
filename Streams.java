@@ -74,6 +74,38 @@ public class Streams { // (c) 2018 dmitrynizh. MIT License.
             .map(st->map(st.split("/"),e->e.split(":"))
                  .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)!=null).map(a->a[0]).reduce("you spent|redeemed: ",(a,b)->a+" "+b))
             .map(v->v.replaceAll(" +", " ")).filter(v->v.indexOf(": on")<0));
+
+        // to stream or not to stream? doing the same with loops...
+        
+        // 1. equivalent of printTotalBalance:
+        {
+          double sum = 0; String[] a;
+          for (Cred c : w) 
+            for (String txo : gall(c.pk,s).split("/")) 
+              if (txo != E) { a = txo.split(":"); if (get(a[1]+":"+a[2],s)==null) sum += toD(a[0]); }
+          bpw.printf("At %tc my balance: %.3f \n", new Date(), sum); bpw.flush();
+        }
+        
+        // 2. Wallet details
+        ///bpw.printf("\nWallet balances\n",
+        String bal = "Wallet balances\n", sp = "Spending history\n";
+        for (Cred c : w) { String have = E, spent = E;
+          for (String txo : gall(c.pk,s).split("/")) 
+            if (txo != E) { String a = txo.split(":"); 
+              if (get(a[1]+":"+a[2],s)==null) have  += a[0] + " ";
+              else spent += a[0] + " ";
+            }
+          if (have !=E) bal += "you have available: " + have + "on key " + c.pk + "\n";
+          if (spent!=E) sp  += "you spent|redeemed: " + spent+ "on key " + c.pk + "\n";
+        }
+        bpw.printf("\n%s\n%s\n", bal, sp); bpw.flush();
+
+          
+        
+        
+
+
+
       } catch (Exception ex) { ex.printStackTrace(); }
   }
 
