@@ -209,6 +209,41 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   }
 } // references: [1] Satoshi Nakamoto, "Bitcoin: A Peer-to-Peer Electronic Cash System",2008
 
+// TODO and ideas
+
+// instead of finding some old pk and sending to it, the creator of TXN should look into a synchronized
+// list (Vector?) of "Craigslist of service providers" and select one randomly if he has money.
+// the list is populated by nodes with relatively little coins in wallets, offering services for pay. 
+// each entry is newly generated pk and price (and maybe also a short description, for fun sake).
+
+// ideally the above should be logged, somehow.
+
+// blockchain 'height' index in each block or perhaps a simple loop to
+// get it. height(b) -> int with -1, -2, -3 etc meaning block has broken link that deep.
+
+// Asking. node must be able to ask the network about a missing block
+// or get the whole chain.  What about the asking node switching to a
+// separate channel, or better, spawning a special thread to collect
+// the responses?
+
+// The 'top set' concept. A node maintains a list of tops each leading to
+// the same root (zero block) each being verified and containing valid
+// txns. if there is more than one, and all of the same height, then
+// node is not yet able to find the longest chain. txn count does not
+// matter. longest chain wins.  Q: should the other ones (shorter) be
+// immediately flashed or kept just in case? Maybe the later is more
+// interesting.
+
+// possibly, review and improve the 'spent out' detection. currently - pk is marked 'spent' in a block.d.
+
+// apis to go from pk to (1) all non-spent txn outs (2) what else?
+
+// with that, dump the wallet at the end.
+
+// multiple processes: late-comer must name the nodes (or at least,
+// files) differently, how? simple hack: asking. asking the net about the value of 'nodes' and start from there.
+// simplest solution is cluster name: java -Dcluster=SF   java -Dcluster=MY java -Dcluster=LA. Yet even simpler to 
+// run each cluster in a separate 'home' dir.
 
 // Command line options: perhaps, switch from args[] to props: CryptoBlockChain -Dn=7 -Dd=49 -Dcoin=XYZCoin ....
 // int difficulty = toI(sprop("d","48")), nodes = toI(sprop("n", "7")
