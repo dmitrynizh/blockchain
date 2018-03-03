@@ -2,7 +2,7 @@ import java.util.*; import java.io.*; import java.net.*; import java.math.*; imp
 import java.security.*; import java.security.spec.*; import static java.nio.charset.StandardCharsets.UTF_8; 
 public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static class Block { String hash; int state, nonce; Block prev, alt; Set<String> txns; HashMap<String, String[]>d; long stamp;}
-  static int nodes, difficulty, effort, max_blocks; 
+  static int nodes, difficulty, effort, max_blocks; static class Cred { String pk; PrivateKey sk; Cred(String p, PrivateKey s) {pk=p;sk=s;}} 
   final static AtomicInteger block_count = new AtomicInteger(1); static volatile boolean run = true;
   public static void main(String[] args) throws Exception { // run network
     nodes      = (args.length > 0) ? Integer.parseInt(args[0]) : 7;
@@ -12,17 +12,17 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
     Block zero = new Block(); zero.stamp = System.currentTimeMillis(); zero.hash = "00";
     for (int i = 0; i < nodes; i++) startNode(i, zero, new Block(), InetAddress.getByName("230.1.1.1"), new Stack<>(), new Vector<>());
   }
-  static void startNode(int id, Block zero, Block b, InetAddress ip, Stack<String> mq, Vector<KeyPair> w) throws Exception {
+  static void startNode(int id, Block zero, Block b, InetAddress ip, Stack<String> mq, Vector<Cred> w) throws Exception {
     b.prev = zero; b.state = 2; b.txns = new TreeSet<>((x, y)->x.compareTo(y)); b.d = new HashMap<>();  
     startListener(ip, id, b, KeyFactory.getInstance("EC"), mq, MessageDigest.getInstance("SHA-256"), w); startMiner(ip, id, b, mq, MessageDigest.getInstance("SHA-256"), w);
   }
-  static void startMiner(InetAddress ip, int id, Block scratch, Stack<String> mq, MessageDigest md, Vector<KeyPair> w) {
+  static void startMiner(InetAddress ip, int id, Block scratch, Stack<String> mq, MessageDigest md, Vector<Cred> w) {
     (new Thread() { @Override public void run() {
       try {
         DatagramSocket udpSocket = new DatagramSocket(); int nonce_idx = 0, nonce = 0; byte[] header = null; 
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC"); keyGen.initialize(256,SecureRandom.getInstance("SHA1PRNG")); 
-        KeyPair pair = keyGen.generateKeyPair(); w.add(pair); PrivateKey sk = pair.getPrivate(); 
-        String pk58 = to58(pair.getPublic().getEncoded());
+        KeyPair pair = keyGen.generateKeyPair(); PrivateKey sk = pair.getPrivate(); 
+        String pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk));
         while (run) {
           String coinbase = sign(String.format("MINT new BTC coins %s 50.0 %s mining reward SIG", pk58, pk58), sk);
           if (block_count.get() > max_blocks) { mq.push("ALL HALT AND DUMP"); run = false; } // halt
@@ -40,21 +40,16 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
               // scratch.txns.add(coinbase); scratch.v.add(coinbase.split(" "));
               mq.push(String.format("BLN\n%s\n%s\n%d %d\n| ", scratch.hash, scratch.prev.hash, nonce, scratch.stamp) 
                       + coinbase + (scratch.txns.isEmpty() ? "" : "," + txt(scratch).replace('[', ' ').replace(']', ' ')));
-              w.add(pair=keyGen.generateKeyPair()); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); // replace keys
+              pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); // replace keys
               //scratch.txns.clear(); // hm.....
               block_count.getAndIncrement(); // "When a node finds a proof-of-work, it broadcasts the block to all nodes" [1].
             }} 
           if (mq.isEmpty() && randN(100) < 20 && block_count.get() > 3) { // in 20% cases, may pay to some pk out of w
             double sum = randN(75)/1.5, has = 0, rem = 0; String src[], v[], src_pk58 = null, src_h = null, payee_tx_hash = null; PrivateKey src_sk = null;
             synchronized(w) { 
-              for (KeyPair p : w.toArray(new KeyPair[0])) { 
-                src_pk58 = to58(p.getPublic().getEncoded()); src_sk = p.getPrivate();
-                if ((src = get(src_pk58,scratch)) != null && !src[0].equals("spent") && ((has = Double.parseDouble(src[1])) >= sum)) break; 
-              }
-              for (int i = 0; i < w.size(); i++) { // scan wallet for cash, looking for balance >= sum
-                src_pk58 = to58(w.elementAt(i).getPublic().getEncoded()); src_sk = w.elementAt(i).getPrivate();
-                if ((src = get(src_pk58,scratch)) != null && !src[0].equals("spent") && ((has = Double.parseDouble(src[1])) >= sum)) break; 
-              }}
+              for (Cred p : w.toArray(new Cred[0]))
+                if ((src = get(p.pk,scratch)) != null && (src_sk = p.sk) != null && !src[0].equals("spent") && ((has = Double.parseDouble(src[1])) >= sum)) break; 
+            }
             if ((rem = has - sum) >= 0) { // when rem == 0, the 2nd output is 0 btc to _ (nobody)
               for (long k = randN(5); k > 0;) // look for some random payee pk
                 for (Block b = scratch; b.prev != null; b = b.prev) 
@@ -68,8 +63,8 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
                     for (Map.Entry<String, String[]> entry : new ArrayList<>(b.d.entrySet())) // look for txn where src_pk58 is 1st payee, its hash is src_h
                       if (((v=entry.getValue())[0].equals("TXN") || v[0].equals("MINT")) && v[6].equals(src_pk58)) { src_h  = entry.getKey(); break;}
                   if (src_h != null) { // System.out.println("-- src_h: " + src_h);
-                    mq.push(sign(String.format("TXN %tT %d %s %s %.3f %s %.3f %s SIG", new Date(), 0, src_h, src_pk58, sum, payee, rem, rem==0?"_":pk58), src_sk)); 
-                    if (rem != 0) { w.add(pair=keyGen.generateKeyPair()); pk58 = to58(pair.getPublic().getEncoded()); sk = pair.getPrivate(); }// replace keys
+                    mq.push(sign(String.format("TXN %tT %d %s %s %.3f %s %.3f %s SIG", new Date(), 0, src_h, src_pk58, sum, payee, rem, rem==0?"_":pk58), src_sk));                  
+                    if (rem != 0) { pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); }// replace keys
                   }}}}}
           if (!mq.isEmpty()) { // from [1]: "New transactions are broadcast to all nodes"
             String msgstr = mq.pop(); if (msgstr.equals("PK+")) msgstr = "PK " + id + " " + pk58;
@@ -92,7 +87,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
       } catch (Exception ex) { ex.printStackTrace(); } 
     }}).start();
   }
-  static void startListener(InetAddress ip, int id, Block scratch, KeyFactory kf, Stack<String> mq, MessageDigest md, Vector<KeyPair> w) {
+  static void startListener(InetAddress ip, int id, Block scratch, KeyFactory kf, Stack<String> mq, MessageDigest md, Vector<Cred> w) {
     (new Thread() { @Override public void run() { 
       try (PrintWriter log = new PrintWriter("n"+id+".log"); PrintWriter bpw = new PrintWriter("balance"+id+".txt")) {
         MulticastSocket mcs = new MulticastSocket(9090); mcs.joinGroup(ip);
@@ -106,7 +101,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
             scratch.txns.add(msg); // try not to do it.... if (verifyTxn(id, msg, md, scratch, sig, kf, log)) { scratch.txns.add(msg); scratch.state = 1; } 
           } else if (msg.startsWith("BLN")) { // validate, then acquire new block and chain it
             String hdr = msg.substring(0, msg.indexOf("|")), hdr_a[] = hdr.split("[\\r\\n\\s]+"), hash = hdr_a[1], prv = hdr_a[2]; boolean OK = true;
-            // TODO: if (!toHex(md.digest(prv+root+form("%x08",nonce)).getBytes(UTF_8))).equals(hash)) { out("Verification FAILED, block hash is wrong: " + hash); continue; }
+            // TODO: needs to incl merkle...if (!toHex(md.digest(prv+root+form("%x08",nonce)).getBytes(UTF_8))).equals(hash)) { out("Verification FAILED, block hash is wrong: " + hash); continue; }
             if (scratch.alt != null) { // time to resolve conflict.  // TODO: think about this and acceptTxn....
               if (prv.equals(scratch.alt.hash)) 
                 scratch.prev = scratch.alt; // "Nodes always consider the longest chain to be the correct one"[1]
@@ -131,9 +126,8 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
                 if (scratch.txns.size() != 0) log.println("node"+id+": not in the accepted block: " + txt(scratch));
               } else log.println("block contains invalid txns, rejecting it: " + msg); // todo: if fromself, flush txns
             } else log.println("block contains previously accepted txns, rejecting it: " + msg); // todo: if fromself, flush txns
-            double myCurrBalance = Arrays.stream(w.toArray(new KeyPair[0])).map(p -> to58(p.getPublic().getEncoded()))
-              .map(pk -> get(pk, scratch)).filter(b -> b != null).mapToDouble(b -> Double.parseDouble(b[1])).sum();
-            bpw.println(String.format("At %tc my balance: %.3f ", new Date(), myCurrBalance)); bpw.flush();
+            double b = Arrays.stream(w.toArray(new Cred[0])).map(p->get(p.pk,scratch)).filter(v->v!=null).mapToDouble(v->Double.parseDouble(v[1])).sum();
+            bpw.println(String.format("At %tc my balance: %.3f ", new Date(), b)); bpw.flush();
           } 
         } 
         String blockchain = "", h_txn = "";
@@ -215,38 +209,8 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   }
 } // references: [1] Satoshi Nakamoto, "Bitcoin: A Peer-to-Peer Electronic Cash System",2008
 
-// TODO and ideas
 
-// instead of finding some old pk and sending to it, the creator of TXN should look into a synchronized
-// list (Vector?) of "Craigslist of service providers" and select one randomly if he has money.
-// the list is populated by nodes with relatively little coins in wallets, offering services for pay. 
-// each entry is newly generated pk and price (and maybe also a short description, for fun sake).
+// Command line options: perhaps, switch from args[] to props: CryptoBlockChain -Dn=7 -Dd=49 -Dcoin=XYZCoin ....
+// int difficulty = toI(sprop("d","48")), nodes = toI(sprop("n", "7")
 
-// ideally the above should be logged, somehow.
-
-// blockchain 'height' index in each block or perhaps a simple loop to
-// get it. height(b) -> int with -1, -2, -3 etc meaning block has broken link that deep.
-
-// Asking. node must be able to ask the network about a missing block
-// or get the whole chain.  What about the asking node switching to a
-// separate channel, or better, spawning a special thread to collect
-// the responses?
-
-// The 'top set' concept. A node maintains a list of tops each leading to
-// the same root (zero block) each being verified and containing valid
-// txns. if there is more than one, and all of the same height, then
-// node is not yet able to find the longest chain. txn count does not
-// matter. longest chain wins.  Q: should the other ones (shorter) be
-// immediately flashed or kept just in case? Maybe the later is more
-// interesting.
-
-// possibly, review and improve the 'spent out' detection. currently - pk is marked 'spent' in a block.d.
-
-// apis to go from pk to (1) all non-spent txn outs (2) what else?
-
-// with that, dump the wallet at the end.
-
-// multiple processes: late-comer must name the nodes (or at least,
-// files) differently, how? simple hack: asking. asking the net about the value of 'nodes' and start from there.
-// simplest solution is cluster name: java -Dcluster=SF   java -Dcluster=MY java -Dcluster=LA. Yet even simpler to 
-// run each cluster in a separate 'home' dir.
+// Streams: byte stream does not work  static String toHex2(byte[] d) { return Arrays.stream(d).map(b->String.format("%02x", b&0xff)).reduce("",(a,b)->a+b); }
