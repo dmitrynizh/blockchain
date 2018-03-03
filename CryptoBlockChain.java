@@ -5,10 +5,10 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static int nodes, difficulty, effort, blockMx; static double reward=50; static class Cred { String pk; PrivateKey sk; Cred(String p, PrivateKey s) {pk=p;sk=s;}} 
   final static AtomicInteger block_count = new AtomicInteger(1); static volatile boolean run = true; static Stack<String> ads = new Stack<>();
   public static void main(String[] args) throws Exception { // run network
-    nodes      = (args.length > 0) ? Integer.parseInt(args[0]) : 7;
-    difficulty = (args.length > 1) ? Integer.parseInt(args[1]) : 49; if (difficulty <= 10) difficulty *= 8;
-    effort     = (args.length > 2) ? Integer.parseInt(args[2]) : 1; effort *= 10000000;
-    blockMx = (args.length > 3) ? Integer.parseInt(args[3]) : 20;
+    nodes      = (args.length > 0) ? toI(args[0]) : 7;
+    difficulty = (args.length > 1) ? toI(args[1]) : 49; if (difficulty <= 10) difficulty *= 8;
+    effort     = (args.length > 2) ? toI(args[2]) : 1; effort *= 10000000;
+    blockMx = (args.length > 3) ? toI(args[3]) : 20;
     Block zero = new Block(); zero.stamp = System.currentTimeMillis(); zero.hash = "00";
     for (int i = 0; i < nodes; i++) startNode(i, zero, new Block(), InetAddress.getByName("230.1.1.1"), new Stack<>(), new Vector<>());
   }
@@ -23,7 +23,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC"); keyGen.initialize(256,SecureRandom.getInstance("SHA1PRNG")); 
         KeyPair pair = keyGen.generateKeyPair(); PrivateKey sk = pair.getPrivate(); 
         String pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk));
-        while(run) {
+        while(run) { // mine continuously, rehashing when new stuff comes, and sending blocks, or txns
           String coinbase = sign(String.format("MINT new BTC coins %s %.1f %s mining reward SIG", pk58, reward, pk58), sk);
           if (block_count.get() > blockMx) { mq.push("ALL HALT AND DUMP"); run = false; } // halt
           else if (scratch.state != 0) { // reset as saw new txn/block.  future: proper Merkle
@@ -51,9 +51,9 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
                 if (get("pending:"+src_pk58,scratch) == null && src != null && get(src[0],scratch) == null && ((has = toD(src[1])) >= sum)) break; 
               }
               if ((rem = has - sum) >= 0) { // when rem == 0, the 2nd output is 0 btc to _ (nobody)
-                String src_h = src[0].split(":")[1]; ads.remove(ad);
-                scratch.d.put("pending:"+src_pk58,mq.peek().split(" ")); /*experimental - to avoid double withdrawals*/
-                mq.push(sign(String.format("TXN %tT %d %s %s %.3f %s %.3f %s SIG", new Date(), 5, src_h, src_pk58, sum, ppk, rem, rem==0?"_":pk58), src_sk));                  
+                String tx, src_h = src[0].split(":")[1]; ads.remove(ad);
+                mq.push(tx=sign(String.format("TXN %tT %d %s %s %.3f %s %.3f %s SIG", new Date(), 5, src_h, src_pk58, sum, ppk, rem, rem==0?"_":pk58), src_sk)); 
+                scratch.d.put("pending:"+src_pk58,tx.split(" ")); /*experimental - to avoid double withdrawals*/
                 if (rem != 0) { pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); }// replace keys
               }} else if (ads.size() < nodes && randN(100) < 30) { // advertise some service/goods on 'physical world' ads desk. 
               String ad = String.format("%s %s %.3f", pk58, Math.random() < 0.5 ?  "Merchandise"  : "Services", 0.1*randN(500));
@@ -113,31 +113,45 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
               while(i < txa.length && (h = verifyTxn(id, txa[i], md, scratch, sig, kf, log)) != null)
                 acceptTxn(id, txa[i], h, txa[i++].split(" "), b);
               if (i == txa.length) { // all transactions valid and accepted
-                b.hash = hdr_a[1]; b.nonce = Integer.parseInt(hdr_a[3]); b.stamp = Long.parseLong(hdr_a[4]); 
+                b.hash = hdr_a[1]; b.nonce = toI(hdr_a[3]); b.stamp = Long.parseLong(hdr_a[4]); 
                 (b.txns = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns); scratch.state = 2; scratch.txns.clear(); // scratch.txns.removeAll(txns); 
                 if (scratch.txns.size() != 0) log.println("node"+id+": not in the accepted block: " + txt(scratch));
               } else log.println("block's nth n="+i+" txn is invalid, rejecting whole block: " + msg); // todo: if fromself, flush txns
               double sum = Arrays.stream(w.toArray(new Cred[0])).map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
+              sum = sCred(w).map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
+              sum = w.stream().map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
+              sum = seq(w).map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
+              sum = map(w,p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
+              seq(new String[]{"a", "b"}).map(s->s);
+              map(new String[]{"a", "b"},s->s);
+              for (Cred c : toA(w));
               bpw.printf("At %tc my balance: %.3f \n", new Date(), sum); bpw.flush();
-            } else            System.out.println("-- unknown msg: <" + msg + ">");
-
-          } // stop run, report
+            }} // stop run, report
           String blockchain = "", h_txn = "";
           for (Block b = scratch.prev; b.prev != null; b = b.prev, h_txn = "") { //log.println("B:"+b.hash+" txns: "+txt(b));
             for (String txn : b.txns.toArray(new String[0])) h_txn += to58(md.digest(txn.getBytes(UTF_8))) + "\n" + txn;
             blockchain = String.format("Mined: %tc\n hash: %s\n prev: %s\nnonce: %d\n txns:\n%s\n\n", 
                                        new Date(b.stamp), b.hash, b.prev.hash, b.nonce, h_txn) + blockchain;
           }
-          try (PrintWriter out = new PrintWriter("blockchain"+id+".txt")) { out.println(blockchain); }
+          bpw.println(w.stream().map(c->"key: "+c.pk+" "+Arrays.toString(get(c.pk,scratch))).reduce("\n",(a,b)->a+"\n"+b));
+          try (PrintWriter pw = new PrintWriter("blockchain"+id+".txt")) { pw.println(blockchain); }
           out("node" + id + " listener exiting."); mcs.leaveGroup(ip); mcs.close();
         } catch (Exception ex) { ex.printStackTrace(); } 
     }}).start();
   }
-  static long randN(long range) { return Math.round(Math.random()*range); }
-  static double toD(String v) { return Double . parseDouble(v); }
+  static java.util.stream.Stream<Cred> sCred(Collection<Cred> c) { return c.stream(); }
+  static <T>   java.util.stream.Stream<T> seq(Collection<T> c) { return c.stream(); }
+  static <T>   java.util.stream.Stream<T> seq(T[] a) { return Arrays.stream(a); }
+  static <X,Y> java.util.stream.Stream<Y> map(X[] a, java.util.function.Function<? super X,? extends Y> mapper) { return seq(a).map(mapper); }
+  static <X,Y> java.util.stream.Stream<Y> map(Collection<X>c, java.util.function.Function<? super X,? extends Y> mapper) { return seq(c).map(mapper); }
+  @SuppressWarnings("unchecked") // from Stackoverflow
+  static <T> T[] toA(Collection<T> c) { return c.toArray((T[])java.lang.reflect.Array.newInstance(c.getClass(), c.size())); }
+
   static void out(String m) { 
-    System.out.println(m = nodes >= 5 ? Arrays.stream(m.split(" ")).map(s->s.startsWith("BL")?s:abbrev("",s,6,40)).reduce("",(a,b)->a+" "+b).trim():m);
+    System.out.println(m = nodes >= 5 ? seq(m.split(" ")).map(s->s.startsWith("BL")?s:abbrev("",s,6,40)).reduce("",(a,b)->a+" "+b).trim():m);
   }
+
+  static long randN(long range) { return Math.round(Math.random()*range); }
   static String txt(Block b) { return Arrays.toString(b.txns.toArray(new String[0])); }
   static boolean fit_p(byte[] hash, final int dif) { // does hash have given difficulty?
     for (int i = 0; i < dif/2/8; i++) if (hash[i] != 0) return false;
@@ -156,6 +170,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
     return data;
   }
   static String[] get(String k, Block b) { String[] r=null; for (; b.prev != null && r == null; b = b.prev) r = b.d.get(k); return r; }
+  static double toD(String v) { return Double.parseDouble(v); } static int toI(String v) { return Integer .parseInt(v); }
   static String verifyTxn(int id, String txn, MessageDigest md, Block scratch, Signature s, KeyFactory kf, PrintWriter log) { try { 
       String[] atr  = txn.split(" "); X509EncodedKeySpec pkSpec = new X509EncodedKeySpec(as58(atr[4]));
       s.initVerify(kf.generatePublic(pkSpec));
@@ -211,12 +226,17 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 
 // CHANGES
 
-// 1. Bulletin Board with "ads". Nodes post ads to "Craigslist" offering goods or
-// services for coins. Owners of unspent TxOs may chose to buy that,
-// this posting TXN transactions and no longer grab some random pk for that.
-// 
-// 2. Some protection against buffer overflow in DatagramPacket with
-// BLN end pattern detection; also, buffer size have been increased.
+// Various Stream based map reduce sequences added to showcase their
+// usefulness in wallet reports and balance finding. The auxiliary methods
+//
+//   static java.util.stream.Stream<Cred> sCred(Collection<Cred> c) { return c.stream(); }
+//   static <T>   java.util.stream.Stream<T> seq(Collection<T> c) { return c.stream(); }
+//   static <T>   java.util.stream.Stream<T> seq(T[] a) { return Arrays.stream(a); }
+//   static <X,Y> java.util.stream.Stream<Y> map(X[] a, java.util.function.Function<? super X,? extends Y> mapper) { return Arrays.stream(a).map(mapper); }
+//   static <X,Y> java.util.stream.Stream<Y> map(Collection<X>c, java.util.function.Function<? super X,? extends Y> mapper) { return c.stream().map(mapper); }
+//
+// help to write shorter wallet data retrieval expressions. See also file Streams.java
+
 
 // TODO and ideas
 
@@ -262,5 +282,4 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 // int difficulty = toI(sprop("d","48")), nodes = toI(sprop("n", "7")
 
 // Streams: byte stream does not work  static String toHex2(byte[] d) { return Arrays.stream(d).map(b->String.format("%02x", b&0xff)).reduce("",(a,b)->a+b); }
-
 
