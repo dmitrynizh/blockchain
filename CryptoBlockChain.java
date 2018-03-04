@@ -1,9 +1,9 @@
-import java.util.*; import java.io.*; import java.net.*; import java.math.*; import java.util.concurrent.atomic.*;
+import java.util.*; import java.io.*; import java.net.*; import java.math.*;
 import java.security.*; import java.security.spec.*; import static java.nio.charset.StandardCharsets.UTF_8; 
 public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
-  static class Block { String hash; int state, nonce; Block prev, alt; Set<String> txns; HashMap<String, String[]>d; long stamp;}
+  static class Block { String hash; int ht, state, nonce; Block prev, alt; Set<String> txns; HashMap<String,String>d; long stamp;}
   static int nodes, difficulty, effort, blockMx; static double reward=50; static class Cred { String pk; PrivateKey sk; Cred(String p, PrivateKey s) {pk=p;sk=s;}} 
-  final static AtomicInteger block_count = new AtomicInteger(1); static volatile boolean run = true; static Stack<String> ads = new Stack<>();
+  static volatile int block_count; static volatile boolean run = true; static Stack<String> ads = new Stack<>(); static final String E = "";
   public static void main(String[] args) throws Exception { // run network
     nodes      = (args.length > 0) ? toI(args[0]) : 7;
     difficulty = (args.length > 1) ? toI(args[1]) : 49; if (difficulty <= 10) difficulty *= 8;
@@ -18,62 +18,62 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   }
   static void startMiner(InetAddress ip, int id, Block scratch, Stack<String> mq, MessageDigest md, Vector<Cred> w) {
     (new Thread() { @Override public void run() {
-      try {
-        DatagramSocket udpSocket = new DatagramSocket(); int nonce_idx = 0, nonce = 0; byte[] header = null; 
+      try (PrintWriter log = new PrintWriter("miner"+id+".log")) {
+        DatagramSocket udpSocket = new DatagramSocket(); int nonce = 0; byte[] header = null; 
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC"); keyGen.initialize(256,SecureRandom.getInstance("SHA1PRNG")); 
         KeyPair pair = keyGen.generateKeyPair(); PrivateKey sk = pair.getPrivate(); 
-        String pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk));
+        String pk58 = to58(pair.getPublic().getEncoded()), txs="", root, coinbase; w.add(new Cred(pk58, sk));
         while(run) { // mine continuously, rehashing when new stuff comes, and sending blocks, or txns
-          String coinbase = sign(String.format("MINT new BTC coins %s %.1f %s mining reward SIG", pk58, reward, pk58), sk);
-          if (block_count.get() > blockMx) { mq.push("ALL HALT AND DUMP"); run = false; } // halt
+          //System.out.println("-- height: " + scratch.prev.ht);
+          if (scratch.prev.ht > blockMx || block_count > blockMx+blockMx/3) { mq.push("ALL HALT AND DUMP"); run = false; } // halt
           else if (scratch.state != 0) { // reset as saw new txn/block.  future: proper Merkle
-            scratch.txns.add(coinbase); String root = toHex(md.digest(txt(scratch).getBytes(UTF_8))); scratch.txns.remove(coinbase);
-            // String all  = txt(scratch); System.out.println("-- all: " + all);
-            header = hexStringToBytes(scratch.prev.hash + root + "00000000");
-            nonce_idx = header.length-4; nonce = 0; scratch.state = 0;
-          } // "Each node works on finding a difficult proof-of-work for its block" - see reference [1].
-          for (int lim = (int)randN(effort), i = 0; i <  lim && mq.isEmpty(); i++, nonce++) { // randN(effort) sets duration
+            Signature sig = Signature.getInstance("SHA256withECDSA"); KeyFactory kf = KeyFactory.getInstance("EC"); double fee[]={0};
+            log(log, "valid: %s",txs = scratch.txns.stream().filter(t->null!=verifyTx(t,fee,md,scratch,sig,kf,log)).reduce("",(a,b)->a+", "+b));
+            log(log, coinbase = sign(String.format("MINT new BTC coins %s %.3f %s mining reward", pk58, fee[0]+reward, pk58), sk));
+            txs = coinbase + txs; root = toHex(md.digest(txs.getBytes(UTF_8)));
+            header = asHex(scratch.prev.hash+root+"00000000"); nonce = scratch.state = 0;
+          }  // "Each node works on finding a difficult proof-of-work for its block" - see reference [1].
+          for (int nonce_idx = header.length-4, lim = randN(effort), i = 0; i <  lim && mq.isEmpty(); i++, nonce++) { // randN sets duration
             for (int x = 0, z = 24; x < 4; x++, z-=8) header[nonce_idx+x] = (byte)(nonce >>> z); // convert int to 4 bytes
             byte[] hash = md.digest(header);
             if (fit_p(hash, difficulty) && scratch.state == 0) { // mined new block!!
-              scratch.stamp = System.currentTimeMillis(); scratch.state = 2; 
-              mq.push(String.format("BLN\n%s\n%s\n%d %d\n| ", toHex(hash), scratch.prev.hash, nonce, scratch.stamp) 
-                      + coinbase + (scratch.txns.isEmpty() ? ";" : "," + txt(scratch).replace('[', ' ').replace(']', ';'))); // " \n  " is indicator
+              scratch.state = 2; block_count++; // "When a node finds a proof-of-work, it broadcasts the block to all nodes" [1].
+              mq.push(String.format("BLN\n%s\n%s\n%d %d\n| %s;", toHex(hash), scratch.prev.hash, nonce, System.currentTimeMillis() ,txs)); // : is end packet
               pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); // replace keys
-              block_count.getAndIncrement(); // "When a node finds a proof-of-work, it broadcasts the block to all nodes" [1].
             }} 
-          if (mq.isEmpty() && randN(100) < 20 && block_count.get() > 3) { // in 20% cases, may pay to some pk out of w
-            if (ads.size() > nodes/3) {
-              String ad = ads.elementAt((int)randN(ads.size()-1)), a[] = ad.split(" "), ppk = a[0], src[]=null, v[], src_pk58=null; 
-              double sum = toD(a[2]), has = 0, rem = 0; PrivateKey src_sk=null;
-              for (Cred p : w.toArray(new Cred[0])) {
+          if (mq.isEmpty() && randN(100) < 30 && block_count > 3) { // in 30% cases, if funds available, may pay to some pk out of w
+            if (ads.size() > nodes/4) {
+              String ad = ads.elementAt(randN(ads.size()-1)), a[] = ad.split(" "), ppk = a[0], src=null,sa[]=null,v[], src_pk58=null; 
+              double sum = toD(a[1]), fee = 0.01*randN((int)sum), has = 0, rem = 0; PrivateKey src_sk=null; //todo if from miner, check that miner mined that X blocks ago
+              for (Cred p : w.toArray(new Cred[0])) { // pk must have UO on it that has sum or more and burried deep enough in blockchain
                 src_pk58 = p.pk; src_sk = p.sk; src = get(src_pk58,scratch);
-                if (get("pending:"+src_pk58,scratch) == null && src != null && get(src[0],scratch) == null && ((has = toD(src[1])) >= sum)) break; 
-              }
-              if ((rem = has - sum) >= 0) { // when rem == 0, the 2nd output is 0 btc to _ (nobody)
-                String tx, src_h = src[0].split(":")[1]; ads.remove(ad);
-                mq.push(tx=sign(String.format("TXN %tT %d %s %s %.3f %s %.3f %s SIG", new Date(), 5, src_h, src_pk58, sum, ppk, rem, rem==0?"_":pk58), src_sk)); 
-                scratch.d.put("pending:"+src_pk58,tx.split(" ")); /*experimental - to avoid double withdrawals*/
-                if (rem != 0) { pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); }// replace keys
+                if (get("pending:"+src_pk58,scratch) == null && src != null && get(src,scratch) == null 
+                    && ((has = toD((sa=src.split(":"))[0])) >= sum) && scratch.prev.ht - toI(sa[3]) > 3) break; 
+              } // the loop above is such constructed that if has >= sum, all set to spend on the ad
+              if ((rem = has - sum - fee) >= 0) { // when rem == 0, the 2nd output is 0 btc to _ (nobody)
+                String tx, sh = sa[2]; int si = toI(sa[1]); if(randN(100) > 20) ads.remove(ad); //  sims that 20% of posters forget remove ad - sims pk reuse cases
+                mq.push(tx=sign(String.format("TXN %tT %d %s %s %.3f %s %.3f %s", new Date(), si, sh, src_pk58, sum, ppk, rem, rem==0?"_":pk58), src_sk)); 
+                scratch.d.put("pending:"+src_pk58,tx); /*experimental - to avoid double withdrawals*/
+                if (rem != 0) {pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); }//replace keys
               }} else if (ads.size() < nodes && randN(100) < 30) { // advertise some service/goods on 'physical world' ads desk. 
-              String ad = String.format("%s %s %.3f", pk58, Math.random() < 0.5 ?  "Merchandise"  : "Services", 0.1*randN(500));
-              out("node" + id + "> " + "posted new craigslist ad: " + ad);
+              String adv[] = {"Buying Coins", "Sell Merchandise", "Services", "Charity"}, ad = String.format("%s %.3f %s", pk58, 0.1*randN(500), adv[randN(3)]);
+              nodeOut(id, ">" + "posted new craigslist ad: " + ad);
               pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); ads.push(ad); 
             }}
           if (!mq.isEmpty()) { // from [1]: "New transactions are broadcast to all nodes"
             String msgstr = mq.pop(); if (msgstr.equals("PK+")) msgstr = "PK " + id + " " + pk58;
             byte[] msg = msgstr.getBytes(); if (!msgstr.startsWith("BLN")) Thread.sleep(randN(700)); // still needed
             udpSocket.send(new DatagramPacket(msg, msg.length, ip, 9090));
-            if (nodes <= 10  || msgstr.startsWith("BLN")) out("node" + id + "> " + msgstr);
+            // test udpSocket.send(new DatagramPacket("TEST".getBytes(), 4, ip, 9090+2));
+            if (nodes <= 10  || msgstr.startsWith("BLN")) nodeOut(id, "> " + msgstr);
             Thread.sleep(randN(500)); // stil keep it
             if (msgstr.startsWith("ALL HALT")) // to force all nodes to quit
-              for (int i = 0; i < 10; i++, Thread.sleep(100)) // 10 times plus delay is ugly but works
+              for (int i = 0; i < 20; i++, Thread.sleep(100)) // 10 times plus delay is ugly but works
                 udpSocket.send(new DatagramPacket(msg, msg.length, ip, 9090));
             else Thread.sleep(100);
           }
-        } udpSocket.close(); out("node" + id + " sender exiting."); 
-      } catch (Exception ex) { ex.printStackTrace(); } 
-    }}).start();
+        } udpSocket.close(); nodeOut(id, "> sender exiting."); 
+      } catch (Exception ex) { ex.printStackTrace(); } }}).start();
   }
   static void startListener(InetAddress ip, int id, Block scratch, KeyFactory kf, Stack<String> mq, MessageDigest md, Vector<Cred> w) {
     (new Thread() { @Override public void run() { 
@@ -84,75 +84,78 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
           while (run) {
             mcs.receive(packet); // method receive blocks the thread until something arrives
             String msg = new String(packet.getData(), packet.getOffset(), packet.getLength());
-            if (nodes < 5) out("node" + id + "< " + msg);
+            if (nodes < 5) nodeOut(id, "< " + msg);
             if (msg.startsWith("TXN") && !scratch.txns.contains(msg)) { // add new record and set state to 1
-              scratch.txns.add(msg); // try not to do it.... if (verifyTxn(id, msg, md, scratch, sig, kf, log)) { scratch.txns.add(msg); scratch.state = 1; } 
+              scratch.txns.add(msg); // try not to do it.... if (verifyTx(id, msg, md, scratch, sig, kf, log)) { scratch.txns.add(msg); scratch.state = 1; } 
             } else if (msg.startsWith("BLN")) { // validate, then acquire new block and chain it
-              if (!msg.endsWith(";")) { out("ERROR: block packet corrupted. sz:" + msg.length() + " txt: <" + msg + ">"); continue; }
-              msg = msg.substring(0, msg.length()-2);
+              if (!msg.endsWith(";")) { log.println("ERROR: block packet corrupted. sz:" + msg.length() + " txt: <" + msg + ">"); continue; }
+              msg = msg.substring(0, msg.length()-2); // or -1???
               String hdr = msg.substring(0, msg.indexOf("|")), hdr_a[] = hdr.split("[\\r\\n\\s]+"), hash = hdr_a[1], prv = hdr_a[2]; 
-              if (scratch.alt != null) { // time to resolve conflict.  // TODO: think about this and acceptTxn....
+              if (scratch.alt != null) { // time to resolve conflict.  // TODO: think about this and acceptTx....
                 if (prv.equals(scratch.alt.hash)) 
                   scratch.prev = scratch.alt; // "Nodes always consider the longest chain to be the correct one"[1]
                 scratch.alt = null; 
               } // next, verify txns. "Nodes accept the block only if all transactions in it are valid and not already spent"[1] 
-              // for (String txn: txnsa) if (!(OK=verifyTxn(id, txn, md, scratch, sig, kf, log))) break;
-              //String[] hasha = Arrays.stream(txnsa).map(s->verifyTxn(id, s, md, scratch, sig, kf, log)).toArray(String[]::new);
+              // for (String txn: txnsa) if (!(OK=verifyTx(id, txn, md, scratch, sig, kf, log))) break;
+              //String[] hasha = Arrays.stream(txnsa).map(s->verifyTx(id, s, md, scratch, sig, kf, log)).toArray(String[]::new);
               //int errcnt = Arrays.stream(hasha).mapToInt(h->h==null?1:0).sum();
-              int i = 0; String h="", txa[] = msg.substring(msg.indexOf("|")+2).split(", "); // Q: what about those already accepted??
+              String h="", txa[] = msg.substring(msg.indexOf("|")+2).split(", "); int i=txa.length-1; // Q: what about those already accepted??
               List<String> txns = Arrays.asList(txa); // we want to make sure none of the new txns are stored in prev blocks!
               // TODO: now can do it using hash search
               // for (Block b = scratch.prev; b.prev != null && (OK = Collections.disjoint(b.txns, txns)); b = b.prev);
-              Block b = new Block(); // Nodes express their acceptance of the block by working on creating the next block  
+              Block b = new Block(), sp = scratch.prev, sa = scratch.alt;  // Nodes express their acceptance of the block by working on creating the next block  
               b.d = new HashMap<>(); // in the chain, using the hash of the accepted block as the previous hash - [1]
               if (!prv.equals(scratch.prev.hash)) { // very rare
                 if (prv.equals(scratch.prev.prev.hash)) { // contestant
-                  { b.prev = scratch.prev.prev; scratch.alt = b; } // "save the other branch in case it becomes longe"[1]
-                } else log.println("ERROR: Unresloved Collision with prev.hash=" + scratch.prev.hash + " for block: " +  msg);
-              } else { b.prev = scratch.prev; scratch.prev = b; } // norml case
-              while(i < txa.length && (h = verifyTxn(id, txa[i], md, scratch, sig, kf, log)) != null)
-                acceptTxn(id, txa[i], h, txa[i++].split(" "), b);
-              if (i == txa.length) { // all transactions valid and accepted
+                  b.prev = scratch.prev.prev;  
+                  b.ht = b.prev.ht+1; scratch.alt = b; // "save the other branch in case it becomes longer"[1]
+                } else log.println("ERROR: seriously orphane block, this is not handled yet. s.p.h:" + scratch.prev.hash + " block: " +  msg);
+              } else { b.prev = scratch.prev; scratch.prev = b; b.ht = b.prev.ht+1; } // normal case
+              for (double fee[]={0};i >= 0 && (h = verifyTx(txa[i], fee, md, scratch, sig, kf, log)) != null;i--) // done backwads    // to compute fees
+                acceptTx(txa[i], h, txa[i].split(" "), b.d, b.ht, 5, 7);
+              if (i == -1) { // all transactions valid and accepted. note: above, consider passing i in to check that i=0 is MINT
                 b.hash = hdr_a[1]; b.nonce = toI(hdr_a[3]); b.stamp = Long.parseLong(hdr_a[4]); 
-                (b.txns = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns); scratch.state = 2; scratch.txns.clear(); // scratch.txns.removeAll(txns); 
-                if (scratch.txns.size() != 0) log.println("node"+id+": not in the accepted block: " + txt(scratch));
-              } else log.println("block's nth n="+i+" txn is invalid, rejecting whole block: " + msg); // todo: if fromself, flush txns
-              double sum = Arrays.stream(w.toArray(new Cred[0])).map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
-              sum = sCred(w).map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
-              sum = w.stream().map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
-              sum = seq(w).map(p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
-              sum = map(w,p->get(p.pk,scratch)).filter(v->v!=null&&get(v[0],scratch)==null).mapToDouble(v->toD(v[1])).sum();
-              seq(new String[]{"a", "b"}).map(s->s);
-              map(new String[]{"a", "b"},s->s);
-              for (Cred c : toA(w));
+                (b.txns = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns); scratch.state = 2; // scratch.txns.clear(); // scratch.txns.removeAll(txns); 
+                // if (scratch.txns.size() != 0) log.println("node"+id+": not in the accepted block: " + txt(scratch.txns));
+              } else { log.println("block's nth n="+i+" txn is invalid, rejecting whole block: " + msg); scratch.prev = sp; scratch.alt = sa; }
+              double sum = map(w,c->get(c.pk,scratch)).filter(v->v!=null)
+                .mapToDouble(s->map(s.split("/"),v->v.split(":")).filter(v->get(v[1]+":"+v[2],scratch)==null).mapToDouble(v->toD(v[0])).sum()).sum();
               bpw.printf("At %tc my balance: %.3f \n", new Date(), sum); bpw.flush();
             }} // stop run, report
-          String blockchain = "", h_txn = "";
-          for (Block b = scratch.prev; b.prev != null; b = b.prev, h_txn = "") { //log.println("B:"+b.hash+" txns: "+txt(b));
-            for (String txn : b.txns.toArray(new String[0])) h_txn += to58(md.digest(txn.getBytes(UTF_8))) + "\n" + txn;
+          String blockchain = "", h_txn = ""; Block s = scratch;
+          for (Block b = s.prev; b.prev != null; b = b.prev, h_txn = "") { //log.println("B:"+b.hash+" txns: "+txt(b));
+            for (String txn : b.txns.toArray(new String[0])) h_txn += to58(md.digest(txn.getBytes(UTF_8))) + ":" + txn;
             blockchain = String.format("Mined: %tc\n hash: %s\n prev: %s\nnonce: %d\n txns:\n%s\n\n", 
                                        new Date(b.stamp), b.hash, b.prev.hash, b.nonce, h_txn) + blockchain;
-          }
-          bpw.println(w.stream().map(c->"key: "+c.pk+" "+Arrays.toString(get(c.pk,scratch))).reduce("\n",(a,b)->a+"\n"+b));
+          } 
           try (PrintWriter pw = new PrintWriter("blockchain"+id+".txt")) { pw.println(blockchain); }
-          out("node" + id + " listener exiting."); mcs.leaveGroup(ip); mcs.close();
-        } catch (Exception ex) { ex.printStackTrace(); } 
-    }}).start();
+          log(bpw, "\nWallet balances\n", "", map(w,c->gall(c.pk,s)+" on key "+c.pk+".\n: : :").filter(st->!st.startsWith(" on"))
+              .map(st->map(st.split("/"),e->e.split(":"))
+                   .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)==null).map(a->a[0]).reduce("you have available: ",(a,b)->a+" "+b))
+              .map(v->v.replaceAll(" +", " ")).filter(v->v.indexOf(": on")<0));
+          log(bpw, "\nSpending history\n", "",   map(w,c->gall(c.pk,s)+" on key "+c.pk+".\n: : :").filter(st->!st.startsWith(" on"))
+              .map(st->map(st.split("/"),e->e.split(":"))
+                   .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)!=null).map(a->a[0]).reduce("you spent|redeemed: ",(a,b)->a+" "+b))
+              .map(v->v.replaceAll(" +", " ")).filter(v->v.indexOf(": on")<0));
+          nodeOut(id, "> listener exiting."); mcs.leaveGroup(ip); mcs.close();
+        } catch (Exception ex) { ex.printStackTrace(); }}}).start();
   }
   static java.util.stream.Stream<Cred> sCred(Collection<Cred> c) { return c.stream(); }
   static <T>   java.util.stream.Stream<T> seq(Collection<T> c) { return c.stream(); }
   static <T>   java.util.stream.Stream<T> seq(T[] a) { return Arrays.stream(a); }
-  static <X,Y> java.util.stream.Stream<Y> map(X[] a, java.util.function.Function<? super X,? extends Y> mapper) { return seq(a).map(mapper); }
-  static <X,Y> java.util.stream.Stream<Y> map(Collection<X>c, java.util.function.Function<? super X,? extends Y> mapper) { return seq(c).map(mapper); }
+  static <X,Y> java.util.stream.Stream<Y> map(X[] a, java.util.function.Function<? super X,? extends Y> f) { return seq(a).map(f); }
+  static <X,Y> java.util.stream.Stream<Y> map(Collection<X>c, java.util.function.Function<? super X,? extends Y> f) { return seq(c).map(f); }
+  static <T> void log(PrintWriter pw, String hdr, String sep, java.util.stream.Stream<T> s) { pw.println(s.map(e->""+e).reduce(hdr,(a,b)->a+sep+b)); }
+
   @SuppressWarnings("unchecked") // from Stackoverflow
   static <T> T[] toA(Collection<T> c) { return c.toArray((T[])java.lang.reflect.Array.newInstance(c.getClass(), c.size())); }
 
-  static void out(String m) { 
-    System.out.println(m = nodes >= 5 ? seq(m.split(" ")).map(s->s.startsWith("BL")?s:abbrev("",s,6,40)).reduce("",(a,b)->a+" "+b).trim():m);
+  static String trace(String msg) { System.out.println("<<" + msg + ">>"); return msg; }
+  static int randN(int range) { return (int)Math.round(Math.random()*range); }
+  static void nodeOut(int id, String m) { 
+    System.out.println("node" + id + (m = nodes >= 5 ? map(m.split(" "),s->s.startsWith("BL")?s:abbrev("",s,8,20)).reduce("",(a,b)->a+" "+b).trim():m));
   }
-
-  static long randN(long range) { return Math.round(Math.random()*range); }
-  static String txt(Block b) { return Arrays.toString(b.txns.toArray(new String[0])); }
+  static String txt(Set<String> s) { return Arrays.toString(s.toArray(new String[0])); }
   static boolean fit_p(byte[] hash, final int dif) { // does hash have given difficulty?
     for (int i = 0; i < dif/2/8; i++) if (hash[i] != 0) return false;
     return ((int)hash[dif/2/8] & 0xff) < (1 << (8 - dif%8));
@@ -163,35 +166,36 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
     return sb.toString();
   }
   static String abbrev(String b, String s, int d, int m) { int l=s.length(); return l < m ? s : b+s.substring(0, d)+"..."+s.substring(s.length()-d);}
-  static byte[] hexStringToBytes(String s) { // from stackoverflow
+  static byte[] asHex(String s) { // from stackoverflow
     int len = s.length(); byte[] data = new byte[len / 2];
     for (int i = 0; i < len; i += 2)
       data[i / 2] = (byte)((Character.digit(s.charAt(i), 16) << 4)+ Character.digit(s.charAt(i+1), 16));
     return data;
   }
-  static String[] get(String k, Block b) { String[] r=null; for (; b.prev != null && r == null; b = b.prev) r = b.d.get(k); return r; }
+  static String get(String k, Block b)  { String r=null; for (; b.prev != null && r == null; b = b.prev) r = b.d.get(k); return r; }
+  static String gall(String k, Block b) { String v,r=E;  for (; b.prev != null; b = b.prev) if ((v=b.d.get(k))!=null) r+=v; return r; }
   static double toD(String v) { return Double.parseDouble(v); } static int toI(String v) { return Integer .parseInt(v); }
-  static String verifyTxn(int id, String txn, MessageDigest md, Block scratch, Signature s, KeyFactory kf, PrintWriter log) { try { 
-      String[] atr  = txn.split(" "); X509EncodedKeySpec pkSpec = new X509EncodedKeySpec(as58(atr[4]));
-      s.initVerify(kf.generatePublic(pkSpec));
-      s.update(txn.substring(0, txn.lastIndexOf(" ", txn.length()-20)).getBytes((UTF_8)));
-      if (!s.verify(as58(atr[10]))) { log.println("bad signature in " + txn); return null; }
-      String hash = to58(md.digest(txn.getBytes(UTF_8))),  bal[] = get(atr[4], scratch);
-      if (get(hash, scratch) != null) { log.println("txn previously included in a block, " + txn); return null; } // we want to make sure none of the new txns are stored in prev blocks!
-      if (atr[0].equals("MINT")) 
-        if (toD(atr[5]) != reward) { log.println("coinbase txn rewards wrong amount "+txn); return null; } else return hash;
-      if (bal == null) { log.println("txn src not found " + txn); return null; } // unknown pk ?
-      if (get(bal[0],scratch) != null) { log.println("input is already spent " + txn); return null; } // spent pk?
-      if (toD(bal[1]) != toD(atr[7]) + toD(atr[5])) { log.println("txn balances do not match " + txn); return null; } 
-      return hash; } catch (Exception e) { log.println(e+": verification failed. txn:" + txn); e.printStackTrace(); return null; }
+  static String log(PrintWriter log, String f, Object... a) { String m=String.format(f, a); if (log != null) log.println(m); log.flush(); return m; }
+  static String logVal(PrintWriter log, String msg, String val) { if(log != null) log.println(msg); return val; }
+  static String verifyTx(String tx, double[] fees, MessageDigest md, Block b, Signature s, KeyFactory kf, PrintWriter log) { 
+    String atr[] = tx.split(" "), hash = to58(md.digest(tx.getBytes(UTF_8))), prev = get(atr[3], b), preva[]=null; int outN = -1; 
+    try { X509EncodedKeySpec eks = new X509EncodedKeySpec(as58(atr[4])); double fee;
+      s.initVerify(kf.generatePublic(eks)); s.update(tx.substring(0, tx.lastIndexOf(" SIG")).getBytes((UTF_8)));
+      if (!s.verify(as58(atr[10]))) return logVal(log,"bad signature in " + tx, null);
+      if (get(hash, b) != null) return logVal(log, "tx previously included in a block, " + tx, null); // make sure none of the new txs are stored in prev blocks!
+      if (atr[0].equals("MINT")) { if (toD(atr[5]) != fees[0]+reward) return logVal(log, "coinbase wrong amount "+tx, null); else return hash; }
+      if (prev == null) return logVal(log, "prev tx not found " + tx, null);  else preva = prev.split(" ");
+      if (!preva[(outN=toI(atr[2]))+1].equals(atr[4])) return logVal(log, "in-pk |"+(atr[4])+"|and prev tx's out pk |"+preva[outN+1]+"| differ " + tx + " " + Arrays.toString(preva), null); 
+      if (get(atr[2]+":"+atr[3],b) != null) return logVal(log, "input is already spent " + tx, null); 
+      if ((fee=toD(preva[outN]) - toD(atr[7]) - toD(atr[5])) < 0) return logVal(log, "tx src not enough balance" + tx, null); else fees[0]+=fee;
+    } catch (Exception e) { return logVal(log, e+": verification failed. tx:" + tx, null); } return hash;
   }
-  static void acceptTxn(int id, String txn, String h, String[] a, Block b) { 
-    String o1[] = {"5:"+h,a[5]}, o2[] = {"7:"+h,a[5]}; 
-    b.d.put(a[2]+":"+a[3],a); b.d.put(h, a); b.d.put(a[6], o1); b.d.put(a[8], o2);  
+  static void acceptTx(String tx, String h, String[] a, HashMap<String,String> d, int ht, int i, int ie) {
+    d.put(a[2]+":"+a[3],tx); d.put(h, tx); for(;i<=ie;i+=2) d.put(a[i+1], a[i]+":"+i+":"+h+":"+ht+":/"+d.getOrDefault(a[i+1],"")); 
   } 
   static String sign(String msg, PrivateKey sk) throws Exception {
     Signature s = Signature.getInstance("SHA256withECDSA"); s.initSign(sk); s.update(msg.getBytes(UTF_8));
-    return msg + " " + to58(s.sign()) + " \n"; // last space is important, see txn.split(" ")!
+    return msg + " SIG " + to58(s.sign()) + " \n"; // last space is important, see txn.split(" ")!
   }
   static final String ALPH = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"; 
   static final char A1 = ALPH.charAt(0); static final BigInteger A_SZ = BigInteger.valueOf(ALPH.length());
@@ -226,16 +230,20 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 
 // CHANGES
 
-// Various Stream based map reduce sequences added to showcase their
-// usefulness in wallet reports and balance finding. The auxiliary methods
-//
-//   static java.util.stream.Stream<Cred> sCred(Collection<Cred> c) { return c.stream(); }
-//   static <T>   java.util.stream.Stream<T> seq(Collection<T> c) { return c.stream(); }
-//   static <T>   java.util.stream.Stream<T> seq(T[] a) { return Arrays.stream(a); }
-//   static <X,Y> java.util.stream.Stream<Y> map(X[] a, java.util.function.Function<? super X,? extends Y> mapper) { return Arrays.stream(a).map(mapper); }
-//   static <X,Y> java.util.stream.Stream<Y> map(Collection<X>c, java.util.function.Function<? super X,? extends Y> mapper) { return c.stream().map(mapper); }
-//
-// help to write shorter wallet data retrieval expressions. See also file Streams.java
+// 1. Simplified block dictionary structure and introduces
+// logic that retrieves multiple unspent outputs associated with a
+// key. 
+
+// 2. Wallets accounting and all lookup and verification spots
+// re-written correspondingly to 1.
+
+// 3. transaction fees are introduced and added to MINT txn amount. During verification,
+// fees are computed and are a part of verification.
+
+// 4. verification logic is now driving txn set selection for a new block to work on.
+
+// 5. verification/acceptance logic is improved - each txn is verified and approved in order
+// listed in th block
 
 
 // TODO and ideas
@@ -282,4 +290,3 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 // int difficulty = toI(sprop("d","48")), nodes = toI(sprop("n", "7")
 
 // Streams: byte stream does not work  static String toHex2(byte[] d) { return Arrays.stream(d).map(b->String.format("%02x", b&0xff)).reduce("",(a,b)->a+b); }
-
