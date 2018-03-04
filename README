@@ -10,7 +10,7 @@ cryptography.
 
 Each java file in this repo is standalone (independent).  Currently, 3
 files are simulators - BlockChain.java, CryptoBlockChain.java and
-Mine.java - and tehe rest are utilities. Coding style in the simulator
+Mine.java - and the rest are utilities. Coding style in the simulator
 files is deliberately somewhat terse because initially this initiative
 was a long cold winter weekend project, and the motivation was to try
 fit some non-trivial functionality into very small number of
@@ -40,7 +40,7 @@ Run:       $ java CryptoBlockChain
 You can alter the default behavior by providing optional command line
 parameters as integers:
  
-$ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <block-count>
+$ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <chain-length>
 
 <node-count>       - How many nodes are in the p2p network. Each node mines new blocks. 
                      Default is 7 nodes.
@@ -49,28 +49,29 @@ $ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <block-cou
 <mining-batch>     - Miners make random choices to generate from 0 to 10M * <mining-batch> hashes 
                      without being interrupted by new blocks/transactions.
                      Default is 1
-<block-count>      - The network shuts down after that many blocks were produced. 
-                     Default is 10.
-
+<chain-length>     - a.k.a block height. The network shuts down after that many blocks were 
+                     added to the chain. Default is 20. If something is wrong and new block are
+                     consistently regected, the network shuts down after 2x that many block are minted.
 Examples:
 
 $ java CryptoBlockChain 15 
-$ java CryptoBlockChain  7 6 1 5
-$ java CryptoBlockChain  7 50 1 5 # as above but with extra two zero bits
+$ java CryptoBlockChain  7 6 1 30
+$ java CryptoBlockChain  7 50 1 30 # as above but with extra two zero bits
 
 The parameters <coin-difficult>y and <mining-batch> are somewhat
 coupled as in a system with many nodes and transactions it is rarely
 possible to mine with high difficulty in a small number of iterations
 before accepting new transactions and blocks.
 
-When the network reaches the block-count goal, nodes start shutting
+When the network reaches the chain-length goal, nodes start shutting
 down. Each node saves its blockchain ledger onto the disk.  The
 consensus is demonstated when all such files are essentially
-identical.
+identical. 
 
-The rest of CryptoBlockChain is as described in the Bitcoin WP [1],
-specifically the key mechanisms described in chapters 4 and 5 are
-implemented precisely as described:
+The functioning of CryptoBlockChain is mainly as described in the
+Bitcoin Whiite Paper[1] and it can be viewed as a 'cleanroom'
+implementation of that.  Specifically, the key mechanisms described in
+chapters 4 and 5 are implemented precisely as described:
 
   "4. Proof-of-Work
   ...The proof-of-work involves scanning for a value that when hashed,
@@ -99,61 +100,85 @@ implemented precisely as described:
   will be broken when the next proof-of-work is found and one branch
   becomes longer."
 
+
+  "9. Combining and Splitting Value
+  Although it would be possible to handle coins individually, it would be unwieldy to make a
+  separate transaction for every cent... Normally there will a single input
+  from a larger previous transaction or multiple inputs combining smaller amounts, and at most two
+  outputs: one for the payment, and one returning the change, if any, back to the sender."*
+  *) see (2) below.
+
+  "10. Privacy
+  As an additional firewall, a new key pair should be used for each transaction to keep them
+  from being linked to a common owner."
+  
+
 At the moment, some mechanisms mentioned in the paper are omitted or
 simplified:
 
-(1) In each process started as described above, all nodes start and 
+(1) No multiple input transactions (chapter 9) yet.
+    Currently, CryptoBlockChain supports txns with single input and two outputs.
+(2) In each process started as described above, all nodes start and 
     terminate at once  and maintain consensus.  When multiple processes run, 
     nodes can join and leave the common network at will, however latecomer
-     nodes can not yet request a missing block or current blockchain (chapter 5). 
-    This currently does not allow to establish consensus across separate processes.
-(2) No multiple input transactions (chapter 9) or variable number of outputs.
-    Currently, CryptoBlockChain supports txns with single input and two outputs.
-(3) "Simplified payment verification" (chapter 8) not implemented.
-(4) Merkle trees not pruned as described in ch.7, and in fact, not currently kept.
-(5) No transaction fees. the input must be equal to the output sum.
-(6) Reward is fixed at 50 btc.
-(7) Difficulty is set initially and does not adjust to control block frequency.
+    nodes can not yet request a missing block or current blockchain (chapter 5). 
+    This currently does not allow to establish consensus across separate processes
+    that connect at different times to the same p2p network.
+(3) Spent transactions can't be pruned as described in ch.7, and in fact, 
+    Merkle trees are not currently kept.
+(4) Consequently, "Simplified payment verification" (chapter 8) not implemented.
+(5) Miningg reward is fixed at 50 btc and does not become smaller as chain grows.
+(6) Miningg difficulty is set initially and does not adjust to control mining rates.
 
-Most of these limitations can be fairly easily removed in future
-updates time permitting.  Priority will be given first to (2), (1),
-then (4), (7).
+All these limitations can be fairly easily removed in future updates
+time permitting.  Priority will be given in the order listed above - 1
+has higher priority than 2 and so on.
 
-No attempt was made to copycat any implementation details of real
-bitcoin clients, wallets, APIs, protocols, layouts, representations,
-'address' size and encodings etc.  The goal was to produce Clean-Room
-simulation based solely on what is specified in [1], with simple and
-direct representation, adequate but not over-optimized. Hence, for
-instance, packets are sequence of space separated words and not byte
-streams, and 'addresses' are public keys, not hashes of them as in
-'real' Bitcoin. As [1] does not outline wallets, Node's wallet is a
-simple collection of KeyPair objects, not a sophistcated asset
-manager. Notable exceptions are (1) use of ECDSA in CryptoBlockChain
-and (2) switch from base64 to base58 in later updates of it. I felt
-that base64 is irritating and base58 is much more pleasant to deal
-with. Another is FORTH-like nature of white-space separated packet
-data. After getting familiar with [1] and also hearing about Etherium
-contracts being programs [2], and being a FORTH enthusiast since
-mid-1980s [4], I felt natural to view my TXN/BLN/MINT packet formats,
-being space separated 'words", as some fragments of simplified FORTH
-code. To my great surprise, later on I found that the official engine
-runs a fairly extensive set of FORTH-like opcodes (OP_DUP, OP_IF [4]).
+No attempt was made to copycat any implementational details of real
+bitcoin clients, wallets, APIs, protocols, binary layouts,
+representations, 'address' size and structure etc.  The goal was to
+produce cleanroom simulator based solely on what is specified in [1],
+with simple and direct representation, adequate but not over-optimized
+for performance. Hence, for instance, packets are sequences of space
+separated words and not byte streams, and 'addresses' are public keys,
+not hashes of them as in 'real' Bitcoin of later releases. As [1] does
+not outline wallets, a node's wallet is a simple collection of pk/sk
+pairs objects, not a sophistcated asset manager. Notable exceptions
+are (1) use of Bitcoin flavor of ECDSA for public keys and (2) use of
+base58. Origiannly everything eas in base64 but I felt that base58 is
+much more pleasant to deal with, hence only block hashes are base64.
+Another correlation with real implementations is FORTH-like processing
+of white-space separated packet data. After getting familiar with [1]
+and also hearing about Etherium contracts being programs [2], and
+being a FORTH enthusiast since mid-1980s [4], I felt natural to view
+the TXN/BLN/MINT packet formats, being space separated "words", as
+some fragments of simplified FORTH code. To my great surprise, later
+on I found that the official engine runs a fairly extensive set of
+FORTH-like opcodes, see[4].
 
-At the moment the nodes broadcast the following messages:
+At the moment the nodes in CryptoBlockChain broadcast the following
+messages:
 
-Transaction        :  TXN <stamp> <prev-txn> <addr-in> <sum1> <addr-out1> <sum2> <addr-out2> SIG <signature>
-Newly minted block :  BLN <hash> <prev-hash> <nonce> ... MINT ... <address> <signature> [TXN ...]*
+Transaction 1-out  :  TXN <stamp> <prev-txn> <addr-in> <sum> <addr-out> 0.000 _  SIG <signature>
+Transaction 2-out  :  TXN <stamp> <prev-txn> <addr-in> <sum1> <addr-out1> <sum2> <addr-out2> SIG <signature>
+Newly minted block :  BLN <hash> <prev-hash> <nonce> ... 
+                          MINT ... <sum> <address> ... <signature> 
+                          TXN ... *
 Halting broadcast  :  ALL HALT AND DUMP
+Asking for a block :  BL? <height/prevhash>
+Block from chain   :  BLC same as BLN with <height> and <next-hash>* before <hash>
 
-The format of TXN and BLN packets constantly change and best can be
-seen as some kind of whitespace separated FORTH-like code to be split
-onto words and interpreted, with TXN, BLN, MINT and other words bening
-predefined IDs treated as immediately executable 'commands' and the
-rest treated as 'data'.
+The format of TXN and BLN packets evolve and best can be seen as some
+kind of whitespace separated FORTH-like code to be split onto words
+and interpreted, with TXN, BLN, MINT, SIG and other uppercase keywords
+being predefined IDs treated as immediately executable 'commands', and
+the rest treated as 'data' that maybe consumed from an array of words
+directly or pushed onto a stack.
 
 In the screen logs below, <signature> and <pk> are printed out in
-base58 (used to be 64) which are about 96-97 and 124 characters long
-when not abbreviated.  Hashes are in hex. 
+base58 and only leading and trailing 6 characters are displayed with
+... in between. This is done to save screen output. Block hashes are
+in hex and not abbreviated.
 
 Sample log:
 
@@ -164,148 +189,148 @@ node4> BLN
 00000027032cedde27214aaeb9416cb16507286ec687f698e5c676453c60156b
 00
 9007478 1519612852332
-| MINT new BTC coins aSq9Ds...yDH7bW 50.0 aSq9Ds...yDH7bW mining reward SIG -- AN1rKq...ssDrR4RjFj 
+| MINT new BTC coins aSq9Ds...yDH7bW 50.0 aSq9Ds...yDH7bW mining reward SIG AN1rKq...ssDrR4RjFj 
 
 node1> BLN
 00000066c61871ea6523a9dfe68b02b122c6d1ddad919cd8323f1c57aac92c26
 00000027032cedde27214aaeb9416cb16507286ec687f698e5c676453c60156b
 19046114 1519612880985
-| MINT new BTC coins aSq9Ds...BVfAYN 50.0 aSq9Ds...BVfAYN mining reward SIG -- iKx1CJ...DLDeUimnRap 
+| MINT new BTC coins aSq9Ds...BVfAYN 50.0 aSq9Ds...BVfAYN mining reward SIG iKx1CJ...DLDeUimnRap 
 
 node5> BLN
 0000002d8b61e8a0b37ad02210b81e183134b84d14fffab1a20a30f48c44985c
 00000066c61871ea6523a9dfe68b02b122c6d1ddad919cd8323f1c57aac92c26
 11071472 1519612897165
-| MINT new BTC coins aSq9Ds...FomFCE 50.0 aSq9Ds...FomFCE mining reward SIG -- AN1rKp...n2vkGN9iUQ 
+| MINT new BTC coins aSq9Ds...FomFCE 50.0 aSq9Ds...FomFCE mining reward SIG AN1rKp...n2vkGN9iUQ 
 
 node0> BLN
 00000046ac8ecd9e99088f87194d51d49fd93439bc838866bcf7c3bec5a82974
 0000002d8b61e8a0b37ad02210b81e183134b84d14fffab1a20a30f48c44985c
 6222749 1519612911612
-| MINT new BTC coins aSq9Ds...qdhLC8 50.0 aSq9Ds...qdhLC8 mining reward SIG -- iKx1CJ...qdEmmUREFss 
+| MINT new BTC coins aSq9Ds...qdhLC8 50.0 aSq9Ds...qdhLC8 mining reward SIG iKx1CJ...qdEmmUREFss 
 
-node5> TXN 18:42:01 0 Ghi3Jo3FD7NwAcAsfFZeGfotVdJnwsq5kMzb3AaCUoWS aSq9Ds...FomFCE 42.667 aSq9Ds...yDH7bW 7.333 aSq9Ds...Pe8r9P SIG -- 381yXZ...REzs5jJUG 
+node5> TXN 18:42:01 0 Ghi3Jo3FD7NwAcAsfFZeGfotVdJnwsq5kMzb3AaCUoWS aSq9Ds...FomFCE 42.667 aSq9Ds...yDH7bW 7.333 aSq9Ds...Pe8r9P SIG 381yXZ...REzs5jJUG 
 
-node1> TXN 18:42:02 0 CHUiHUgzY49wJDWASXzVTbTRZcVPH8YJZdhVVDqFtA2W aSq9Ds...BVfAYN 41.333 aSq9Ds...yDH7bW 8.667 aSq9Ds...KH3D13 SIG -- 381yXY...zv9eeGZuZ 
+node1> TXN 18:42:02 0 CHUiHUgzY49wJDWASXzVTbTRZcVPH8YJZdhVVDqFtA2W aSq9Ds...BVfAYN 41.333 aSq9Ds...yDH7bW 8.667 aSq9Ds...KH3D13 SIG 381yXY...zv9eeGZuZ 
 
 node5> BLN
 000000278845822e2725ef5977e13136c8ca5885dab481d6c44fbc2b9d9ce62c
 00000046ac8ecd9e99088f87194d51d49fd93439bc838866bcf7c3bec5a82974
 9199471 1519612931182
-| MINT new BTC coins aSq9Ds...rLA3fc 50.0 aSq9Ds...rLA3fc mining reward SIG -- AN1rKr...8uqLVNmt5m 
-, TXN 18:42:01 0 Ghi3Jo3FD7NwAcAsfFZeGfotVdJnwsq5kMzb3AaCUoWS aSq9Ds...FomFCE 42.667 aSq9Ds...yDH7bW 7.333 aSq9Ds...Pe8r9P SIG -- 381yXZ...REzs5jJUG 
-, TXN 18:42:02 0 CHUiHUgzY49wJDWASXzVTbTRZcVPH8YJZdhVVDqFtA2W aSq9Ds...BVfAYN 41.333 aSq9Ds...yDH7bW 8.667 aSq9Ds...KH3D13 SIG -- 381yXY...zv9eeGZuZ 
+| MINT new BTC coins aSq9Ds...rLA3fc 50.0 aSq9Ds...rLA3fc mining reward SIG AN1rKr...8uqLVNmt5m 
+, TXN 18:42:01 0 Ghi3Jo3FD7NwAcAsfFZeGfotVdJnwsq5kMzb3AaCUoWS aSq9Ds...FomFCE 42.667 aSq9Ds...yDH7bW 7.333 aSq9Ds...Pe8r9P SIG 381yXZ...REzs5jJUG 
+, TXN 18:42:02 0 CHUiHUgzY49wJDWASXzVTbTRZcVPH8YJZdhVVDqFtA2W aSq9Ds...BVfAYN 41.333 aSq9Ds...yDH7bW 8.667 aSq9Ds...KH3D13 SIG 381yXY...zv9eeGZuZ 
 
 node1> BLN
 0000004509fc60d19538c1e139d9fa0867adce5d23b9c88c549b59cbe8c10156
 000000278845822e2725ef5977e13136c8ca5885dab481d6c44fbc2b9d9ce62c
 2116361 1519612938180
-| MINT new BTC coins aSq9Ds...wYPLjV 50.0 aSq9Ds...wYPLjV mining reward SIG -- iKx1CJ...JUddiLxxb92 
+| MINT new BTC coins aSq9Ds...wYPLjV 50.0 aSq9Ds...wYPLjV mining reward SIG iKx1CJ...JUddiLxxb92 
 
 node1> BLN
 000000548ee73e0bbbe162f99bc5cd58d1df7312c99c23ee6d956e9ae3acbf98
 0000004509fc60d19538c1e139d9fa0867adce5d23b9c88c549b59cbe8c10156
 5371314 1519612945768
-| MINT new BTC coins aSq9Ds...w9PoN2 50.0 aSq9Ds...w9PoN2 mining reward SIG -- iKx1CJ...wKwUdXgwNbn 
+| MINT new BTC coins aSq9Ds...w9PoN2 50.0 aSq9Ds...w9PoN2 mining reward SIG iKx1CJ...wKwUdXgwNbn 
 
 node5> BLN
 0000004e85fce279e5e35cdb5f07deea499ef2053ca3e97ea6cdcdcc748f0142
 000000548ee73e0bbbe162f99bc5cd58d1df7312c99c23ee6d956e9ae3acbf98
 649831 1519612947350
-| MINT new BTC coins aSq9Ds...9iov79 50.0 aSq9Ds...9iov79 mining reward SIG -- iKx1CJ...SUCA64LEMqJ 
+| MINT new BTC coins aSq9Ds...9iov79 50.0 aSq9Ds...9iov79 mining reward SIG iKx1CJ...SUCA64LEMqJ 
 
-node1> TXN 18:42:39 0 5LR79UsgSmL63uPjcw8CYsiLXFc5iC9KeyjhNcdu1YYQ aSq9Ds...wYPLjV 36.667 aSq9Ds...yDH7bW 13.333 aSq9Ds...j2R7A5 SIG -- 381yXZ...h26KUMaNF 
+node1> TXN 18:42:39 0 5LR79UsgSmL63uPjcw8CYsiLXFc5iC9KeyjhNcdu1YYQ aSq9Ds...wYPLjV 36.667 aSq9Ds...yDH7bW 13.333 aSq9Ds...j2R7A5 SIG 381yXZ...h26KUMaNF 
 
 node2> BLN
 0000006e03f729ac34ffd9b33b1f1be4a33aef4d11530a48da0962dfed14f850
 0000004e85fce279e5e35cdb5f07deea499ef2053ca3e97ea6cdcdcc748f0142
 9254811 1519612969840
-| MINT new BTC coins aSq9Ds...BXnGdS 50.0 aSq9Ds...BXnGdS mining reward SIG -- AN1rKq...CZa34LQZEr 
-, TXN 18:42:39 0 5LR79UsgSmL63uPjcw8CYsiLXFc5iC9KeyjhNcdu1YYQ aSq9Ds...wYPLjV 36.667 aSq9Ds...yDH7bW 13.333 aSq9Ds...j2R7A5 SIG -- 381yXZ...h26KUMaNF 
+| MINT new BTC coins aSq9Ds...BXnGdS 50.0 aSq9Ds...BXnGdS mining reward SIG AN1rKq...CZa34LQZEr 
+, TXN 18:42:39 0 5LR79UsgSmL63uPjcw8CYsiLXFc5iC9KeyjhNcdu1YYQ aSq9Ds...wYPLjV 36.667 aSq9Ds...yDH7bW 13.333 aSq9Ds...j2R7A5 SIG 381yXZ...h26KUMaNF 
 
 node5> BLN
 00000008db01a5b709f68d22a368191b92e2fe4dc3d87a520f2763d8eacf33b6
 0000006e03f729ac34ffd9b33b1f1be4a33aef4d11530a48da0962dfed14f850
 9220 1519612977343
-| MINT new BTC coins aSq9Ds...C4iXyA 50.0 aSq9Ds...C4iXyA mining reward SIG -- iKx1CJ...tuPfgA4nRrU 
+| MINT new BTC coins aSq9Ds...C4iXyA 50.0 aSq9Ds...C4iXyA mining reward SIG iKx1CJ...tuPfgA4nRrU 
 
-node5> TXN 18:43:10 0 7GfFVvRnDSyKaZoQxfdHaLGJF9FBYTcTuA7yJe2qrPcE aSq9Ds...rLA3fc 10.000 aSq9Ds...yDH7bW 40.000 aSq9Ds...DX3xSK SIG -- AN1rKo...3R9U4cXwZC 
+node5> TXN 18:43:10 0 7GfFVvRnDSyKaZoQxfdHaLGJF9FBYTcTuA7yJe2qrPcE aSq9Ds...rLA3fc 10.000 aSq9Ds...yDH7bW 40.000 aSq9Ds...DX3xSK SIG AN1rKo...3R9U4cXwZC 
 
 node1> BLN
 0000004e828f611ea84db018fc999796beb19f6effa5d050c0ac499a58044afc
 00000008db01a5b709f68d22a368191b92e2fe4dc3d87a520f2763d8eacf33b6
 14476135 1519612997126
-| MINT new BTC coins aSq9Ds...94QmCM 50.0 aSq9Ds...94QmCM mining reward SIG -- AN1rKq...WkMhZ6kesh 
-, TXN 18:43:10 0 7GfFVvRnDSyKaZoQxfdHaLGJF9FBYTcTuA7yJe2qrPcE aSq9Ds...rLA3fc 10.000 aSq9Ds...yDH7bW 40.000 aSq9Ds...DX3xSK SIG -- AN1rKo...3R9U4cXwZC 
+| MINT new BTC coins aSq9Ds...94QmCM 50.0 aSq9Ds...94QmCM mining reward SIG AN1rKq...WkMhZ6kesh 
+, TXN 18:43:10 0 7GfFVvRnDSyKaZoQxfdHaLGJF9FBYTcTuA7yJe2qrPcE aSq9Ds...rLA3fc 10.000 aSq9Ds...yDH7bW 40.000 aSq9Ds...DX3xSK SIG AN1rKo...3R9U4cXwZC 
 
-node2> TXN 18:43:34 0 G3NWVyYrLd3f6M25C1piExa6eyTDAaFUK2PEiGXiryzc aSq9Ds...BXnGdS 9.333 aSq9Ds...yDH7bW 40.667 aSq9Ds...3Pg3nW SIG -- 381yXZ...9G5PZEP1Z 
+node2> TXN 18:43:34 0 G3NWVyYrLd3f6M25C1piExa6eyTDAaFUK2PEiGXiryzc aSq9Ds...BXnGdS 9.333 aSq9Ds...yDH7bW 40.667 aSq9Ds...3Pg3nW SIG 381yXZ...9G5PZEP1Z 
 
 node5> BLN
 000000369820407a1bccca194b1ff6c0d1287059900a8bed9443e233a196ff55
 0000004e828f611ea84db018fc999796beb19f6effa5d050c0ac499a58044afc
 6793622 1519613016573
-| MINT new BTC coins aSq9Ds...Z9piKg 50.0 aSq9Ds...Z9piKg mining reward SIG -- 381yXY...ek6jtq8kF 
-, TXN 18:43:34 0 G3NWVyYrLd3f6M25C1piExa6eyTDAaFUK2PEiGXiryzc aSq9Ds...BXnGdS 9.333 aSq9Ds...yDH7bW 40.667 aSq9Ds...3Pg3nW SIG -- 381yXZ...9G5PZEP1Z 
+| MINT new BTC coins aSq9Ds...Z9piKg 50.0 aSq9Ds...Z9piKg mining reward SIG 381yXY...ek6jtq8kF 
+, TXN 18:43:34 0 G3NWVyYrLd3f6M25C1piExa6eyTDAaFUK2PEiGXiryzc aSq9Ds...BXnGdS 9.333 aSq9Ds...yDH7bW 40.667 aSq9Ds...3Pg3nW SIG 381yXZ...9G5PZEP1Z 
 
 node5> BLN
 00000009c2852d4d8f22877297ac429c64797551c6ea9fa35be750f252412e90
 000000369820407a1bccca194b1ff6c0d1287059900a8bed9443e233a196ff55
 10269438 1519613032776
-| MINT new BTC coins aSq9Ds...EXKqKW 50.0 aSq9Ds...EXKqKW mining reward SIG -- AN1rKq...ok4Fd8Wxw9 
+| MINT new BTC coins aSq9Ds...EXKqKW 50.0 aSq9Ds...EXKqKW mining reward SIG AN1rKq...ok4Fd8Wxw9 
 
-node5> TXN 18:44:02 0 3S6YB3bf5iwUYvBg4s3yMkxPgQKqLkWc739J36EhNXEK aSq9Ds...9iov79 33.333 aSq9Ds...yDH7bW 16.667 aSq9Ds...AUgbP7 SIG -- iKx1CJ...mdv9WFj79sq 
+node5> TXN 18:44:02 0 3S6YB3bf5iwUYvBg4s3yMkxPgQKqLkWc739J36EhNXEK aSq9Ds...9iov79 33.333 aSq9Ds...yDH7bW 16.667 aSq9Ds...AUgbP7 SIG iKx1CJ...mdv9WFj79sq 
 
 node1> BLN
 00000065994773e3c9e4752a2e551e3787cd3f99716ed06668679bfd0a404feb
 00000009c2852d4d8f22877297ac429c64797551c6ea9fa35be750f252412e90
 3216383 1519613042432
-| MINT new BTC coins aSq9Ds...Q9ceqP 50.0 aSq9Ds...Q9ceqP mining reward SIG -- AN1rKv...wMcHx4rC9k 
-, TXN 18:44:02 0 3S6YB3bf5iwUYvBg4s3yMkxPgQKqLkWc739J36EhNXEK aSq9Ds...9iov79 33.333 aSq9Ds...yDH7bW 16.667 aSq9Ds...AUgbP7 SIG -- iKx1CJ...mdv9WFj79sq 
+| MINT new BTC coins aSq9Ds...Q9ceqP 50.0 aSq9Ds...Q9ceqP mining reward SIG AN1rKv...wMcHx4rC9k 
+, TXN 18:44:02 0 3S6YB3bf5iwUYvBg4s3yMkxPgQKqLkWc739J36EhNXEK aSq9Ds...9iov79 33.333 aSq9Ds...yDH7bW 16.667 aSq9Ds...AUgbP7 SIG iKx1CJ...mdv9WFj79sq 
 
-node5> TXN 18:44:31 0 8tB7DTjcL5BFPJJptkTPYTYsGLRh6CzXk5gQuAMfbTtS aSq9Ds...C4iXyA 7.333 aSq9Ds...yDH7bW 42.667 aSq9Ds...EVYe6E SIG -- iKx1CJ...nTcxsNr6Ust 
+node5> TXN 18:44:31 0 8tB7DTjcL5BFPJJptkTPYTYsGLRh6CzXk5gQuAMfbTtS aSq9Ds...C4iXyA 7.333 aSq9Ds...yDH7bW 42.667 aSq9Ds...EVYe6E SIG iKx1CJ...nTcxsNr6Ust 
 
-node0> TXN 18:44:30 0 HEaTgBxrXfHoQUiJKxTUw8Py3vh9EATKb5eVRJdJ1FFc aSq9Ds...qdhLC8 38.667 aSq9Ds...yDH7bW 11.333 aSq9Ds...C1hhSx SIG -- iKx1CJ...zsxpHmJv5mq 
+node0> TXN 18:44:30 0 HEaTgBxrXfHoQUiJKxTUw8Py3vh9EATKb5eVRJdJ1FFc aSq9Ds...qdhLC8 38.667 aSq9Ds...yDH7bW 11.333 aSq9Ds...C1hhSx SIG iKx1CJ...zsxpHmJv5mq 
 
 node0> BLN
 0000005d088ce09928b2638ad4f14bbee24b9129fed33fc064865ceedca60cbd
 00000065994773e3c9e4752a2e551e3787cd3f99716ed06668679bfd0a404feb
 12846185 1519613073763
-| MINT new BTC coins aSq9Ds...iK6ZaC 50.0 aSq9Ds...iK6ZaC mining reward SIG -- iKx1CJ...LpEH7UqKCEo 
-, TXN 18:44:30 0 HEaTgBxrXfHoQUiJKxTUw8Py3vh9EATKb5eVRJdJ1FFc aSq9Ds...qdhLC8 38.667 aSq9Ds...yDH7bW 11.333 aSq9Ds...C1hhSx SIG -- iKx1CJ...zsxpHmJv5mq 
-, TXN 18:44:31 0 8tB7DTjcL5BFPJJptkTPYTYsGLRh6CzXk5gQuAMfbTtS aSq9Ds...C4iXyA 7.333 aSq9Ds...yDH7bW 42.667 aSq9Ds...EVYe6E SIG -- iKx1CJ...nTcxsNr6Ust 
+| MINT new BTC coins aSq9Ds...iK6ZaC 50.0 aSq9Ds...iK6ZaC mining reward SIG iKx1CJ...LpEH7UqKCEo 
+, TXN 18:44:30 0 HEaTgBxrXfHoQUiJKxTUw8Py3vh9EATKb5eVRJdJ1FFc aSq9Ds...qdhLC8 38.667 aSq9Ds...yDH7bW 11.333 aSq9Ds...C1hhSx SIG iKx1CJ...zsxpHmJv5mq 
+, TXN 18:44:31 0 8tB7DTjcL5BFPJJptkTPYTYsGLRh6CzXk5gQuAMfbTtS aSq9Ds...C4iXyA 7.333 aSq9Ds...yDH7bW 42.667 aSq9Ds...EVYe6E SIG iKx1CJ...nTcxsNr6Ust 
 
 node0> BLN
 0000003b67109ec2d23824f98dd724457143de9d5cb3df5a37b1c33197af8efa
 0000005d088ce09928b2638ad4f14bbee24b9129fed33fc064865ceedca60cbd
 1270928 1519613076974
-| MINT new BTC coins aSq9Ds...TEFXQt 50.0 aSq9Ds...TEFXQt mining reward SIG -- iKx1CJ...nQNV4VcLgJ7 
+| MINT new BTC coins aSq9Ds...TEFXQt 50.0 aSq9Ds...TEFXQt mining reward SIG iKx1CJ...nQNV4VcLgJ7 
 
 node0> BLN
 000000250566767a76ef0660c1c9465cbf20675b7bcc133796461d9de9e64e0c
 0000003b67109ec2d23824f98dd724457143de9d5cb3df5a37b1c33197af8efa
 4004901 1519613087726
-| MINT new BTC coins aSq9Ds...kmpTmx 50.0 aSq9Ds...kmpTmx mining reward SIG -- AN1rKv...pBAAFCUjJk 
+| MINT new BTC coins aSq9Ds...kmpTmx 50.0 aSq9Ds...kmpTmx mining reward SIG AN1rKv...pBAAFCUjJk 
 
 node2> BLN
 0000000cd15ce47497b1998741310b3d437f00b2d5b96d21324ac483218e5c5e
 000000250566767a76ef0660c1c9465cbf20675b7bcc133796461d9de9e64e0c
 4710589 1519613114561
-| MINT new BTC coins aSq9Ds...KetJPd 50.0 aSq9Ds...KetJPd mining reward SIG -- AN1rKv...Dot46Jhkds 
+| MINT new BTC coins aSq9Ds...KetJPd 50.0 aSq9Ds...KetJPd mining reward SIG AN1rKv...Dot46Jhkds 
 
 node1> BLN
 0000002c171aa8fa60ba79329ce6eed2fa40a55cdaccfb153d0a55ed5bcee6b2
 0000000cd15ce47497b1998741310b3d437f00b2d5b96d21324ac483218e5c5e
 16090841 1519613137573
-| MINT new BTC coins aSq9Ds...Z5CvUk 50.0 aSq9Ds...Z5CvUk mining reward SIG -- 381yXZ...8ykieLjwx 
+| MINT new BTC coins aSq9Ds...Z5CvUk 50.0 aSq9Ds...Z5CvUk mining reward SIG 381yXZ...8ykieLjwx 
 
-node1> TXN 18:45:43 0 7ECpb1k6Lnp3yYtwExqcbFMyHehPjPJNmkuZNmAXmAc7 aSq9Ds...w9PoN2 30.000 aSq9Ds...yDH7bW 20.000 aSq9Ds...5yinUu SIG -- iKx1CJ...EmwXb6yv2do 
+node1> TXN 18:45:43 0 7ECpb1k6Lnp3yYtwExqcbFMyHehPjPJNmkuZNmAXmAc7 aSq9Ds...w9PoN2 30.000 aSq9Ds...yDH7bW 20.000 aSq9Ds...5yinUu SIG iKx1CJ...EmwXb6yv2do 
 
 node2> BLN
 000000003a7fc8986b1c302751ef961b38f26d34a5fb9f5ed47c07764989ec97
 0000002c171aa8fa60ba79329ce6eed2fa40a55cdaccfb153d0a55ed5bcee6b2
 1355619 1519613145501
-| MINT new BTC coins aSq9Ds...ax3445 50.0 aSq9Ds...ax3445 mining reward SIG -- iKx1CJ...zCrDBCJq6ub 
-, TXN 18:45:43 0 7ECpb1k6Lnp3yYtwExqcbFMyHehPjPJNmkuZNmAXmAc7 aSq9Ds...w9PoN2 30.000 aSq9Ds...yDH7bW 20.000 aSq9Ds...5yinUu SIG -- iKx1CJ...EmwXb6yv2do 
+| MINT new BTC coins aSq9Ds...ax3445 50.0 aSq9Ds...ax3445 mining reward SIG iKx1CJ...zCrDBCJq6ub 
+, TXN 18:45:43 0 7ECpb1k6Lnp3yYtwExqcbFMyHehPjPJNmkuZNmAXmAc7 aSq9Ds...w9PoN2 30.000 aSq9Ds...yDH7bW 20.000 aSq9Ds...5yinUu SIG iKx1CJ...EmwXb6yv2do 
 
 node0 sender exiting.
 node1 sender exiting.
