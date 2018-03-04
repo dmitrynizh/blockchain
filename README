@@ -8,31 +8,77 @@ concepts of digital currency, peer-to-peer distributed consensus
 mechanisms, secure hashing, digital signatures, public key
 cryptography.
 
-Each java file in this repo is standalone (independent).  Currently, 3
+Each Java file in this repo is standalone (independent).  Currently, 3
 files are simulators - BlockChain.java, CryptoBlockChain.java and
 Mine.java - and the rest are utilities. Coding style in the simulator
-files is deliberately somewhat terse because initially this initiative
-was a long cold winter weekend project, and the motivation was to try
-fit some non-trivial functionality into very small number of
-lines. Mine was hacked first, followed by p2p BlockChain and
+files is deliberately somewhat terse because originally this
+initiative was a long, cold winter weekend's project, and the
+motivation was to try to fit some non-trivial blockchain functionality
+into smallest possible number of lines using modern Java idioms and
+features (lambdas, map/reduce streams). Mine.java came out first
+followed by p2p network BlockChain and based on it cryptographic
 CryptoBlockChain. At that time, upon completion, the line count was:
-
+ 
 Mine.java             :  90 lines
 BlockChain.java       : 100 lines
 CryptoBlockChain.java : 160 lines
 
 As CryptoBlockChain is expected to get more updates, its line count
-will increase perhpas substantially as for the sake of clarity, there
+will increase perhaps substantially as for the sake of clarity, there
 is a benefit in adding some verbosity and commentary. Still the goal
 is to keep it strictly under 300 lines, standalone (depending only on
-Java SE jars).
+JavaSE jars).
+
+
+File Mine.java
+--------------------------
+Compile:   % javac Mine.java
+Run:       $ java Mine <difficulty> <previous-block-header-bytes> <file-with-transactions>
+
+Mine tries to find the hash for the next block continuously increasing
+nonce and checking that SHA-256 hash of byte array containing
+<previous-block-header-bytes>, Merkle root hash of all transactions
+from <file-with-transactions> and 4 bytes of the nonce counter. The
+hash , elapsed time and hash rate are printed out when hash is found.
+Mine the files about once every second, updating the cache when new content arrives.
+
+File BlockChain.java
+--------------------------
+Compile:   % javac BlockChain.java
+Run:       $ java BlockChain
+
+This is a very simple peer-to-peer network based on Java UDP
+protocols. Each node runs two threads, one ;mines' and another
+receives incoming messages. Any cryptography was deliberately left out
+from this simulator and it substitutes cryptographic proof-of-work
+with random thread loads and or sleep intervals. In many other
+aspects, the nodes function as described in in the Bitcoin White Paper
+[1], build distributed blockchain and and maintain consensus. After
+specified number of blocks was created, each node terminates, saving
+the blockchain ledger to the disk. The consensus is demonstated when
+all such files are essentially identical.
+
+The nodes accept a new block after verifying that it extends the last
+one and checking that it does nor include transaction already included
+into the chain.
+
+You can alter the default behavior by providing optional command line
+parameters as integers:
+ 
+  $ java BlockChain <node-count> <coin-difficulty> <block-count>
+
+Example:
+
+  $ java BlockChain 20 5 30 
 
 File CryptoBlockChain.java
 --------------------------
-This is the most complex one. It simulates, in real time,  the workings of a
-cryptographic blockchain based on proof-of-work as outlined in the
-Bitcoin White Paper [1].  To compile and run this simulator, you need JDK
-Java 8 or newer.
+This is the most complex simulator in this repo. It simulates, in real
+time, the workings of a secure and distributed cryptographic
+blockchain based on proof-of-work as outlined in the Bitcoin White
+Paper [1].  
+
+To compile and run this simulator, you need JDK Java 8 or newer.
 
 Compile:   % javac CryptoBlockChain.java
 Run:       $ java CryptoBlockChain
@@ -40,26 +86,32 @@ Run:       $ java CryptoBlockChain
 You can alter the default behavior by providing optional command line
 parameters as integers:
  
-$ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <chain-length>
+  $ java CryptoBlockChain <node-count> <coin-difficulty> <mining-batch> <chain-length>
 
-<node-count>       - How many nodes are in the p2p network. Each node mines new blocks. 
-                     Default is 7 nodes.
-<coin-difficulty>  - Miners seek for that many zeros in block hash values they generate. 
-                     Default is 6. Values above 10 are interpreted as zero bit count.
-<mining-batch>     - Miners make random choices to generate from 0 to 10M * <mining-batch> hashes 
-                     without being interrupted by new blocks/transactions.
-                     Default is 1
-<chain-length>     - a.k.a block height. The network shuts down after that many blocks were 
-                     added to the chain. Default is 20. If something is wrong and new block are
-                     consistently regected, the network shuts down after 2x that many block are minted.
+Where:
+
+  <node-count>       - How many nodes are in the p2p network. Each node  continuously
+                       mines new blocks. Default is 7 nodes.
+  <coin-difficulty>  - Miners seek for that many zeros in block hash values 
+                       they generate. Default is 6. Values above 10 are 
+                       interpreted as zero bit count.
+  <mining-batch>     - Miners make random choices to generate from 
+                       0 to 10M * <mining-batch> hashes without being 
+                       interrupted by new blocks/transactions. Default is 1.
+  <chain-length>     - a.k.a block height. The network shuts down after 
+                       that many blocks were added to the chain. 
+                       Default is 20. If something is wrong and new block 
+                       are consistently regected, the network shuts down 
+                       after 2x that many blocks were minted.
+
 Examples:
 
-$ java CryptoBlockChain 15 
-$ java CryptoBlockChain  7 6 1 30
-$ java CryptoBlockChain  7 50 1 30 # as above but with extra two zero bits
+  $ java CryptoBlockChain 15 
+  $ java CryptoBlockChain  7 6 1 30
+  $ java CryptoBlockChain  7 50 1 30 # as above but with extra two zero bits
 
 The parameters <coin-difficult>y and <mining-batch> are somewhat
-coupled as in a system with many nodes and transactions it is rarely
+coupled; in a system with many nodes and transactions it is rarely
 possible to mine with high difficulty in a small number of iterations
 before accepting new transactions and blocks.
 
@@ -100,7 +152,6 @@ chapters 4 and 5 are implemented precisely as described:
   will be broken when the next proof-of-work is found and one branch
   becomes longer."
 
-
   "9. Combining and Splitting Value
   Although it would be possible to handle coins individually, it would be unwieldy to make a
   separate transaction for every cent... Normally there will a single input
@@ -111,7 +162,6 @@ chapters 4 and 5 are implemented precisely as described:
   "10. Privacy
   As an additional firewall, a new key pair should be used for each transaction to keep them
   from being linked to a common owner."
-  
 
 At the moment, some mechanisms mentioned in the paper are omitted or
 simplified:
@@ -132,28 +182,29 @@ simplified:
 
 All these limitations can be fairly easily removed in future updates
 time permitting.  Priority will be given in the order listed above - 1
-has higher priority than 2 and so on.
+has highest priority followed by 2 and so on.
 
 No attempt was made to copycat any implementational details of real
 bitcoin clients, wallets, APIs, protocols, binary layouts,
 representations, 'address' size and structure etc.  The goal was to
-produce cleanroom simulator based solely on what is specified in [1],
-with simple and direct representation, adequate but not over-optimized
-for performance. Hence, for instance, packets are sequences of space
-separated words and not byte streams, and 'addresses' are public keys,
-not hashes of them as in 'real' Bitcoin of later releases. As [1] does
-not outline wallets, a node's wallet is a simple collection of pk/sk
-pairs objects, not a sophistcated asset manager. Notable exceptions
-are (1) use of Bitcoin flavor of ECDSA for public keys and (2) use of
-base58. Origiannly everything eas in base64 but I felt that base58 is
-much more pleasant to deal with, hence only block hashes are base64.
-Another correlation with real implementations is FORTH-like processing
-of white-space separated packet data. After getting familiar with [1]
-and also hearing about Etherium contracts being programs [2], and
-being a FORTH enthusiast since mid-1980s [4], I felt natural to view
-the TXN/BLN/MINT packet formats, being space separated "words", as
-some fragments of simplified FORTH code. To my great surprise, later
-on I found that the official engine runs a fairly extensive set of
+produce a cleanroom simulator based solely on what is specified in
+[1], with simple and direct representation, adequate but not
+over-optimized for performance. Hence, for instance, packets are
+sequences of space separated words and not byte streams, and
+'addresses' are public keys, not hashes of them as in 'real' Bitcoin
+of later releases. As [1] does not outline wallets, a node's wallet is
+a simple collection of pk/sk pairs objects, not a sophistcated asset
+manager. Notable exceptions are (1) use of Bitcoin flavor of ECDSA for
+public keys and (2) use of base58. Initially, hashes and keys were
+printed out in base64 but I found that base58 is much more pleasant to
+deal with, hence only block hashes are printed out in base64.  Another
+correlation with real implementations is FORTH-like processing of
+white-space separated packet data. After getting familiar with [1] and
+also hearing about Etherium contracts being programs [2], and being a
+FORTH enthusiast since mid-1980s [4], I felt natural to view the
+TXN/BLN/MINT packet formats, being space separated "words", as some
+fragments of simplified FORTH code. To my great surprise, later on I
+found that the official engine runs a fairly extensive set of
 FORTH-like opcodes, see[4].
 
 At the moment the nodes in CryptoBlockChain broadcast the following
@@ -168,17 +219,18 @@ Halting broadcast  :  ALL HALT AND DUMP
 Asking for a block :  BL? <height/prevhash>
 Block from chain   :  BLC same as BLN with <height> and <next-hash>* before <hash>
 
-The format of TXN and BLN packets evolve and best can be seen as some
-kind of whitespace separated FORTH-like code to be split onto words
-and interpreted, with TXN, BLN, MINT, SIG and other uppercase keywords
-being predefined IDs treated as immediately executable 'commands', and
-the rest treated as 'data' that maybe consumed from an array of words
-directly or pushed onto a stack.
+The format of TXN and BLN packets still evolve, and best can be seen
+as some kind of whitespace separated FORTH-like code to be split onto
+words and interpreted, with TXN, BLN, MINT, SIG and other uppercase
+keywords being predefined IDs treated as immediately executable
+'commands', and the rest treated as 'data' that maybe consumed from an
+array of words directly or pushed onto a stack.
 
-In the screen logs below, <signature> and <pk> are printed out in
-base58 and only leading and trailing 6 characters are displayed with
+In the screen logs below, base58 <signature> and <pk> strings are
+abbreviated with only leading and trailing 6 characters displayed and
 ... in between. This is done to save screen output. Block hashes are
-in hex and not abbreviated.
+in hex and not abbreviated. The output saved in ledger files is not
+abbreviated.
 
 Sample log:
 
@@ -561,11 +613,9 @@ Remaining Repo Files
 
 Other files in the repo demonstrate various aspects of blockchain or cryptography:
 
-BlockChain.java - simple non-cryptographic consensus over a peer-2-peer network 
 GenHash.java    - produce key pair from text seed
 GenSig.java     - initially derived from Java tutorial, expanded and re-written
 Merkle.java     - simple demonstration of Merkle trees
-Mine.java       - standalone (single-node) bitcoin-like hash mining engine
 VerSig.java     - initially derived from Java tutorial, expanded and re-written
 
 
