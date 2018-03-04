@@ -2,7 +2,7 @@ import java.util.*; import java.io.*; import java.net.*; import java.math.*;
 import java.security.*; import java.security.spec.*; import static java.nio.charset.StandardCharsets.UTF_8; 
 public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static class Block { String hash; int ht, state, nonce; Block prev, alt; Set<String> txns; HashMap<String,String>d; long stamp;}
-  static int nodes, difficulty, effort, blockMx; static double reward=50; static class Cred { String pk; PrivateKey sk; Cred(String p, PrivateKey s) {pk=p;sk=s;}} 
+  static int nodes, difficulty, effort, blockMx, reward=50000; static class Cred { String pk; PrivateKey sk; Cred(String p, PrivateKey s) {pk=p;sk=s;}} 
   static volatile int block_count; static volatile boolean run = true; static Stack<String> ads = new Stack<>(); static final String E = "";
   public static void main(String[] args) throws Exception { // run network
     nodes      = (args.length > 0) ? toI(args[0]) : 7;
@@ -27,9 +27,10 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
           //System.out.println("-- height: " + scratch.prev.ht);
           if (scratch.prev.ht > blockMx || block_count > blockMx+blockMx/3) { mq.push("ALL HALT AND DUMP"); run = false; } // halt
           else if (scratch.state != 0) { // reset as saw new txn/block.  future: proper Merkle
-            Signature sig = Signature.getInstance("SHA256withECDSA"); KeyFactory kf = KeyFactory.getInstance("EC"); double fee[]={0};
-            log(log, "valid: %s",txs = scratch.txns.stream().filter(t->null!=verifyTx(t,fee,md,scratch,sig,kf,log)).reduce("",(a,b)->a+", "+b));
-            log(log, coinbase = sign(String.format("MINT new BTC coins %s %.3f %s mining reward", pk58, fee[0]+reward, pk58), sk));
+            Signature sig = Signature.getInstance("SHA256withECDSA"); KeyFactory kf = KeyFactory.getInstance("EC"); int fee[]={0};
+            Block b = new Block(); b.d = new HashMap<>(); b.prev = scratch.prev; // b.d detects and rejects any double spends in the new batch 
+            log(log, "valid: %s",txs = scratch.txns.stream().filter(t->null!=verifyTx(t,fee,md,b,sig,kf,log)).reduce("",(x,y)->x+", "+y));
+            log(log, coinbase = sign(String.format("MINT new coins mBTC= %s %d %s mining reward", pk58, fee[0]+reward, pk58), sk));
             txs = coinbase + txs; root = toHex(md.digest(txs.getBytes(UTF_8)));
             header = asHex(scratch.prev.hash+root+"00000000"); nonce = scratch.state = 0;
           }  // "Each node works on finding a difficult proof-of-work for its block" - see reference [1].
@@ -44,19 +45,19 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
           if (mq.isEmpty() && randN(100) < 30 && block_count > 3) { // in 30% cases, if funds available, may pay to some pk out of w
             if (ads.size() > nodes/4) {
               String ad = ads.elementAt(randN(ads.size()-1)), a[] = ad.split(" "), ppk = a[0], src=null,sa[]=null,v[], src_pk58=null; 
-              double sum = toD(a[1]), fee = 0.01*randN((int)sum), has = 0, rem = 0; PrivateKey src_sk=null; //todo if from miner, check that miner mined that X blocks ago
+              int sum = toI(a[1]), fee = randN(sum)/100, has = 0, rem = 0; PrivateKey src_sk=null; //todo if from miner, check that miner mined that X blocks ago
               for (Cred p : w.toArray(new Cred[0])) { // pk must have UO on it that has sum or more and burried deep enough in blockchain
                 src_pk58 = p.pk; src_sk = p.sk; src = get(src_pk58,scratch);
                 if (get("pending:"+src_pk58,scratch) == null && src != null && get(src,scratch) == null 
-                    && ((has = toD((sa=src.split(":"))[0])) >= sum) && scratch.prev.ht - toI(sa[3]) > 3) break; 
+                    && ((has = toI((sa=src.split(":"))[0])) >= sum) && scratch.prev.ht - toI(sa[3]) > 3) break; 
               } // the loop above is such constructed that if has >= sum, all set to spend on the ad
               if ((rem = has - sum - fee) >= 0) { // when rem == 0, the 2nd output is 0 btc to _ (nobody)
                 String tx, sh = sa[2]; int si = toI(sa[1]); if(randN(100) > 20) ads.remove(ad); //  sims that 20% of posters forget remove ad - sims pk reuse cases
-                mq.push(tx=sign(String.format("TXN %tT %d %s %s %.3f %s %.3f %s", new Date(), si, sh, src_pk58, sum, ppk, rem, rem==0?"_":pk58), src_sk)); 
+                mq.push(tx=sign(String.format("TXN %tT %d %s %s %d %s %d %s", new Date(), si, sh, src_pk58, sum, ppk, rem, rem==0?"_":pk58), src_sk)); 
                 scratch.d.put("pending:"+src_pk58,tx); /*experimental - to avoid double withdrawals*/
                 if (rem != 0) {pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); }//replace keys
               }} else if (ads.size() < nodes && randN(100) < 30) { // advertise some service/goods on 'physical world' ads desk. 
-              String adv[] = {"Buying Coins", "Sell Merchandise", "Services", "Charity"}, ad = String.format("%s %.3f %s", pk58, 0.1*randN(500), adv[randN(3)]);
+              String adv[] = {"Buying Coins", "Sell Merchandise", "Services", "Charity"}, ad = String.format("%s %d %s", pk58, randN(50000), adv[randN(3)]);
               nodeOut(id, ">" + "posted new craigslist ad: " + ad);
               pair=keyGen.generateKeyPair(); sk = pair.getPrivate(); pk58 = to58(pair.getPublic().getEncoded()); w.add(new Cred(pk58, sk)); ads.push(ad); 
             }}
@@ -81,7 +82,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
           MulticastSocket mcs = new MulticastSocket(9090); mcs.joinGroup(ip);
           DatagramPacket packet = new DatagramPacket(new byte[16*1024], 16*1024); 
           Signature sig = Signature.getInstance("SHA256withECDSA");
-          while (run) {
+          while (run) { Thread.sleep(randN(500)); 
             mcs.receive(packet); // method receive blocks the thread until something arrives
             String msg = new String(packet.getData(), packet.getOffset(), packet.getLength());
             if (nodes < 5) nodeOut(id, "< " + msg);
@@ -96,13 +97,8 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
                   scratch.prev = scratch.alt; // "Nodes always consider the longest chain to be the correct one"[1]
                 scratch.alt = null; 
               } // next, verify txns. "Nodes accept the block only if all transactions in it are valid and not already spent"[1] 
-              // for (String txn: txnsa) if (!(OK=verifyTx(id, txn, md, scratch, sig, kf, log))) break;
-              //String[] hasha = Arrays.stream(txnsa).map(s->verifyTx(id, s, md, scratch, sig, kf, log)).toArray(String[]::new);
-              //int errcnt = Arrays.stream(hasha).mapToInt(h->h==null?1:0).sum();
               String h="", txa[] = msg.substring(msg.indexOf("|")+2).split(", "); int i=txa.length-1; // Q: what about those already accepted??
               List<String> txns = Arrays.asList(txa); // we want to make sure none of the new txns are stored in prev blocks!
-              // TODO: now can do it using hash search
-              // for (Block b = scratch.prev; b.prev != null && (OK = Collections.disjoint(b.txns, txns)); b = b.prev);
               Block b = new Block(), sp = scratch.prev, sa = scratch.alt;  // Nodes express their acceptance of the block by working on creating the next block  
               b.d = new HashMap<>(); // in the chain, using the hash of the accepted block as the previous hash - [1]
               if (!prv.equals(scratch.prev.hash)) { // very rare
@@ -111,16 +107,14 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
                   b.ht = b.prev.ht+1; scratch.alt = b; // "save the other branch in case it becomes longer"[1]
                 } else log.println("ERROR: seriously orphane block, this is not handled yet. s.p.h:" + scratch.prev.hash + " block: " +  msg);
               } else { b.prev = scratch.prev; scratch.prev = b; b.ht = b.prev.ht+1; } // normal case
-              for (double fee[]={0};i >= 0 && (h = verifyTx(txa[i], fee, md, scratch, sig, kf, log)) != null;i--) // done backwads    // to compute fees
-                acceptTx(txa[i], h, txa[i].split(" "), b.d, b.ht, 5, 7);
+              for (int fee[]={0};i >= 0 && (h = verifyTx(txa[i], fee, md, scratch, sig, kf, log)) != null;i--); // done backwads // to compute fees
               if (i == -1) { // all transactions valid and accepted. note: above, consider passing i in to check that i=0 is MINT
                 b.hash = hdr_a[1]; b.nonce = toI(hdr_a[3]); b.stamp = Long.parseLong(hdr_a[4]); 
                 (b.txns = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns); scratch.state = 2; // scratch.txns.clear(); // scratch.txns.removeAll(txns); 
-                // if (scratch.txns.size() != 0) log.println("node"+id+": not in the accepted block: " + txt(scratch.txns));
               } else { log.println("block's nth n="+i+" txn is invalid, rejecting whole block: " + msg); scratch.prev = sp; scratch.alt = sa; }
-              double sum = map(w,c->get(c.pk,scratch)).filter(v->v!=null)
-                .mapToDouble(s->map(s.split("/"),v->v.split(":")).filter(v->get(v[1]+":"+v[2],scratch)==null).mapToDouble(v->toD(v[0])).sum()).sum();
-              bpw.printf("At %tc my balance: %.3f \n", new Date(), sum); bpw.flush();
+              int sum = map(w,c->get(c.pk,scratch)).filter(v->v!=null)
+                .mapToInt(s->map(s.split("/"),v->v.split(":")).filter(v->get(v[1]+":"+v[2],scratch)==null).mapToInt(v->toI(v[0])).sum()).sum();
+              bpw.printf("At %tc my BTC balance: %4.3f \n", new Date(), ((double)sum)/1000.0); bpw.flush();
             }} // stop run, report
           String blockchain = "", h_txn = ""; Block s = scratch;
           for (Block b = s.prev; b.prev != null; b = b.prev, h_txn = "") { //log.println("B:"+b.hash+" txns: "+txt(b));
@@ -131,11 +125,11 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
           try (PrintWriter pw = new PrintWriter("blockchain"+id+".txt")) { pw.println(blockchain); }
           log(bpw, "\nWallet balances\n", "", map(w,c->gall(c.pk,s)+" on key "+c.pk+".\n: : :").filter(st->!st.startsWith(" on"))
               .map(st->map(st.split("/"),e->e.split(":"))
-                   .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)==null).map(a->a[0]).reduce("you have available: ",(a,b)->a+" "+b))
+                   .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)==null).map(a->a[0]).reduce("you have available mBTC: ",(a,b)->a+" "+b))
               .map(v->v.replaceAll(" +", " ")).filter(v->v.indexOf(": on")<0));
           log(bpw, "\nSpending history\n", "",   map(w,c->gall(c.pk,s)+" on key "+c.pk+".\n: : :").filter(st->!st.startsWith(" on"))
               .map(st->map(st.split("/"),e->e.split(":"))
-                   .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)!=null).map(a->a[0]).reduce("you spent|redeemed: ",(a,b)->a+" "+b))
+                   .filter(r->r[0].charAt(0)==' '||get(r[1]+":"+r[2],s)!=null).map(a->a[0]).reduce("you spent|redeemed mBTC: ",(a,b)->a+" "+b))
               .map(v->v.replaceAll(" +", " ")).filter(v->v.indexOf(": on")<0));
           nodeOut(id, "> listener exiting."); mcs.leaveGroup(ip); mcs.close();
         } catch (Exception ex) { ex.printStackTrace(); }}}).start();
@@ -149,8 +143,6 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 
   @SuppressWarnings("unchecked") // from Stackoverflow
   static <T> T[] toA(Collection<T> c) { return c.toArray((T[])java.lang.reflect.Array.newInstance(c.getClass(), c.size())); }
-
-  static String trace(String msg) { System.out.println("<<" + msg + ">>"); return msg; }
   static int randN(int range) { return (int)Math.round(Math.random()*range); }
   static void nodeOut(int id, String m) { 
     System.out.println("node" + id + (m = nodes >= 5 ? map(m.split(" "),s->s.startsWith("BL")?s:abbrev("",s,8,20)).reduce("",(a,b)->a+" "+b).trim():m));
@@ -177,17 +169,21 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static double toD(String v) { return Double.parseDouble(v); } static int toI(String v) { return Integer .parseInt(v); }
   static String log(PrintWriter log, String f, Object... a) { String m=String.format(f, a); if (log != null) log.println(m); log.flush(); return m; }
   static String logVal(PrintWriter log, String msg, String val) { if(log != null) log.println(msg); return val; }
-  static String verifyTx(String tx, double[] fees, MessageDigest md, Block b, Signature s, KeyFactory kf, PrintWriter log) { 
+  static String verifyTx(String tx, int[] fees, MessageDigest md, Block b, Signature s, KeyFactory kf, PrintWriter log) { 
     String atr[] = tx.split(" "), hash = to58(md.digest(tx.getBytes(UTF_8))), prev = get(atr[3], b), preva[]=null; int outN = -1; 
-    try { X509EncodedKeySpec eks = new X509EncodedKeySpec(as58(atr[4])); double fee;
+    try { X509EncodedKeySpec eks = new X509EncodedKeySpec(as58(atr[4])); int fee;
       s.initVerify(kf.generatePublic(eks)); s.update(tx.substring(0, tx.lastIndexOf(" SIG")).getBytes((UTF_8)));
       if (!s.verify(as58(atr[10]))) return logVal(log,"bad signature in " + tx, null);
       if (get(hash, b) != null) return logVal(log, "tx previously included in a block, " + tx, null); // make sure none of the new txs are stored in prev blocks!
-      if (atr[0].equals("MINT")) { if (toD(atr[5]) != fees[0]+reward) return logVal(log, "coinbase wrong amount "+tx, null); else return hash; }
-      if (prev == null) return logVal(log, "prev tx not found " + tx, null);  else preva = prev.split(" ");
-      if (!preva[(outN=toI(atr[2]))+1].equals(atr[4])) return logVal(log, "in-pk |"+(atr[4])+"|and prev tx's out pk |"+preva[outN+1]+"| differ " + tx + " " + Arrays.toString(preva), null); 
-      if (get(atr[2]+":"+atr[3],b) != null) return logVal(log, "input is already spent " + tx, null); 
-      if ((fee=toD(preva[outN]) - toD(atr[7]) - toD(atr[5])) < 0) return logVal(log, "tx src not enough balance" + tx, null); else fees[0]+=fee;
+      if (atr[0].equals("MINT")) {
+        if (toI(atr[5]) != fees[0]+reward) return logVal(log, "coinbase wrong amount "+tx, null); 
+      } else { 
+        if (prev == null) return logVal(log, "prev tx not found " + tx, null);  else preva = prev.split(" ");
+        if (!preva[(outN=toI(atr[2]))+1].equals(atr[4])) return logVal(log, "in-pk |"+(atr[4])+"|and prev tx's out pk |"+preva[outN+1]+"| differ " + tx + " " + Arrays.toString(preva), null); 
+        if (get(atr[2]+":"+atr[3],b) != null) return logVal(log, "input is already spent " + tx, null); 
+        if ((fee=toI(preva[outN]) - toI(atr[7]) - toI(atr[5])) < 0) return logVal(log, "tx src not enough balance" + tx, null); else fees[0]+=fee;
+      }
+      acceptTx(tx, hash, atr, b.d, b.ht, 5, 7);
     } catch (Exception e) { return logVal(log, e+": verification failed. tx:" + tx, null); } return hash;
   }
   static void acceptTx(String tx, String h, String[] a, HashMap<String,String> d, int ht, int i, int ie) {
@@ -230,20 +226,11 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 
 // CHANGES
 
-// 1. Simplified block dictionary structure and introduces
-// logic that retrieves multiple unspent outputs associated with a
-// key. 
+// 1. Bye-bye doubles! as soon as fees were added and verified,
+// doubles no longer work. Switched to  milliBTC.
 
-// 2. Wallets accounting and all lookup and verification spots
-// re-written correspondingly to 1.
-
-// 3. transaction fees are introduced and added to MINT txn amount. During verification,
-// fees are computed and are a part of verification.
-
-// 4. verification logic is now driving txn set selection for a new block to work on.
-
-// 5. verification/acceptance logic is improved - each txn is verified and approved in order
-// listed in th block
+// 2. verifyTx now calls acceptTx, this helps miner to detect conflicting txns in new batch,
+// for which a fresh block is constructed with a dictionary.
 
 
 // TODO and ideas
