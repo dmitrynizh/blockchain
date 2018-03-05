@@ -23,13 +23,13 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC"); keyGen.initialize(256,SecureRandom.getInstance("SHA1PRNG")); 
         KeyPair pair = keyGen.generateKeyPair(); PrivateKey sk = pair.getPrivate(); 
         String pk58 = to58(pair.getPublic().getEncoded()), txs="", root, coinbase; w.add(new Cred(pk58, sk));
-        while(run) { // mine continuously, rehashing when new stuff comes, and sending blocks, or txns
+        while (run) { // mine continuously, rehashing when new stuff comes, and sending blocks, or txns
           //System.out.println("-- height: " + scratch.prev.ht);
           if (scratch.prev.ht > blockMx || block_count > blockMx+blockMx/3) { mq.push("ALL HALT AND DUMP"); run = false; } // halt
           else if (scratch.state != 0) { // reset as saw new txn/block.  future: proper Merkle
             Signature sig = Signature.getInstance("SHA256withECDSA"); KeyFactory kf = KeyFactory.getInstance("EC"); int fee[]={0};
             Block b = new Block(); b.d = new HashMap<>(); b.prev = scratch.prev; // b.d detects and rejects any double spends in the new batch 
-            log(log, "valid: %s",txs = scratch.txns.stream().filter(t->null!=verifyTx(t,fee,md,b,sig,kf,log)).reduce("",(x,y)->x+", "+y));
+            log(log, "valid: %s",txs = seq(toA(scratch.txns,"")).filter(t->null!=verifyTx(t,fee,md,b,sig,kf,log)).reduce("",(x,y)->x+", "+y));
             log(log, coinbase = sign(String.format("MINT new coins mBTC= %s %d %s mining reward", pk58, fee[0]+reward, pk58), sk));
             txs = coinbase + txs; root = toHex(md.digest(txs.getBytes(UTF_8)));
             header = asHex(scratch.prev.hash+root+"00000000"); nonce = scratch.state = 0;
@@ -107,7 +107,7 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
                   b.ht = b.prev.ht+1; scratch.alt = b; // "save the other branch in case it becomes longer"[1]
                 } else log.println("ERROR: seriously orphane block, this is not handled yet. s.p.h:" + scratch.prev.hash + " block: " +  msg);
               } else { b.prev = scratch.prev; scratch.prev = b; b.ht = b.prev.ht+1; } // normal case
-              for (int fee[]={0};i >= 0 && (h = verifyTx(txa[i], fee, md, scratch, sig, kf, log)) != null;i--); // done backwads // to compute fees
+              for (int fee[]={0};i >= 0 && (h = verifyTx(txa[i], fee, md, b, sig, kf, log)) != null;i--); // done backwads to compute fees
               if (i == -1) { // all transactions valid and accepted. note: above, consider passing i in to check that i=0 is MINT
                 b.hash = hdr_a[1]; b.nonce = toI(hdr_a[3]); b.stamp = Long.parseLong(hdr_a[4]); 
                 (b.txns = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns); scratch.state = 2; // scratch.txns.clear(); // scratch.txns.removeAll(txns); 
@@ -140,9 +140,8 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static <X,Y> java.util.stream.Stream<Y> map(X[] a, java.util.function.Function<? super X,? extends Y> f) { return seq(a).map(f); }
   static <X,Y> java.util.stream.Stream<Y> map(Collection<X>c, java.util.function.Function<? super X,? extends Y> f) { return seq(c).map(f); }
   static <T> void log(PrintWriter pw, String hdr, String sep, java.util.stream.Stream<T> s) { pw.println(s.map(e->""+e).reduce(hdr,(a,b)->a+sep+b)); }
-
   @SuppressWarnings("unchecked") // from Stackoverflow
-  static <T> T[] toA(Collection<T> c) { return c.toArray((T[])java.lang.reflect.Array.newInstance(c.getClass(), c.size())); }
+  static <T> T[] toA(Collection<T> c, Object e) { return c.toArray((T[])java.lang.reflect.Array.newInstance(e.getClass(), c.size())); }
   static int randN(int range) { return (int)Math.round(Math.random()*range); }
   static void nodeOut(int id, String m) { 
     System.out.println("node" + id + (m = nodes >= 5 ? map(m.split(" "),s->s.startsWith("BL")?s:abbrev("",s,8,20)).reduce("",(a,b)->a+" "+b).trim():m));
@@ -170,25 +169,22 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
   static String log(PrintWriter log, String f, Object... a) { String m=String.format(f, a); if (log != null) log.println(m); log.flush(); return m; }
   static String logVal(PrintWriter log, String msg, String val) { if(log != null) log.println(msg); return val; }
   static String verifyTx(String tx, int[] fees, MessageDigest md, Block b, Signature s, KeyFactory kf, PrintWriter log) { 
-    String atr[] = tx.split(" "), hash = to58(md.digest(tx.getBytes(UTF_8))), prev = get(atr[3], b), preva[]=null; int outN = -1; 
-    try { X509EncodedKeySpec eks = new X509EncodedKeySpec(as58(atr[4])); int fee;
+    String a[] = tx.split(" "), h = to58(md.digest(tx.getBytes(UTF_8))), prev = get(a[3], b), preva[]=null; int outN = -1; 
+    try { X509EncodedKeySpec eks = new X509EncodedKeySpec(as58(a[4])); int fee;
       s.initVerify(kf.generatePublic(eks)); s.update(tx.substring(0, tx.lastIndexOf(" SIG")).getBytes((UTF_8)));
-      if (!s.verify(as58(atr[10]))) return logVal(log,"bad signature in " + tx, null);
-      if (get(hash, b) != null) return logVal(log, "tx previously included in a block, " + tx, null); // make sure none of the new txs are stored in prev blocks!
-      if (atr[0].equals("MINT")) {
-        if (toI(atr[5]) != fees[0]+reward) return logVal(log, "coinbase wrong amount "+tx, null); 
+      if (!s.verify(as58(a[10]))) return logVal(log,"bad signature in " + tx, null);
+      if (get(h, b) != null) return logVal(log, "tx previously included in a block, " + tx, null); // make sure none of the new txs are stored in prev blocks!
+      if (a[0].equals("MINT")) {
+        if (toI(a[5]) != fees[0]+reward) return logVal(log, "coinbase wrong amount "+tx, null); 
       } else { 
         if (prev == null) return logVal(log, "prev tx not found " + tx, null);  else preva = prev.split(" ");
-        if (!preva[(outN=toI(atr[2]))+1].equals(atr[4])) return logVal(log, "in-pk |"+(atr[4])+"|and prev tx's out pk |"+preva[outN+1]+"| differ " + tx + " " + Arrays.toString(preva), null); 
-        if (get(atr[2]+":"+atr[3],b) != null) return logVal(log, "input is already spent " + tx, null); 
-        if ((fee=toI(preva[outN]) - toI(atr[7]) - toI(atr[5])) < 0) return logVal(log, "tx src not enough balance" + tx, null); else fees[0]+=fee;
-      }
-      acceptTx(tx, hash, atr, b.d, b.ht, 5, 7);
-    } catch (Exception e) { return logVal(log, e+": verification failed. tx:" + tx, null); } return hash;
+        if (!preva[(outN=toI(a[2]))+1].equals(a[4])) return logVal(log, "in-pk |"+(a[4])+"|and prev tx's out pk |"+preva[outN+1]+"| differ " + tx + " " + Arrays.toString(preva), null); 
+        if (get(a[2]+":"+a[3],b) != null) return logVal(log, "input is already spent " + tx, null); 
+        if ((fee=toI(preva[outN]) - toI(a[7]) - toI(a[5])) < 0) return logVal(log, "tx src not enough balance" + tx, null); else fees[0]+=fee;
+      } // was: acceptTx(tx, h, atr, b.d, b.ht, 5, 7);
+      b.d.put(a[2]+":"+a[3],tx); b.d.put(h, tx); for(int i=5;i<=7;i+=2) b.d.put(a[i+1], a[i]+":"+i+":"+h+":"+b.ht+":/"+b.d.getOrDefault(a[i+1],"")); 
+    } catch (Exception e) { return logVal(log, e+": verification failed. tx:" + tx, null); } return h;
   }
-  static void acceptTx(String tx, String h, String[] a, HashMap<String,String> d, int ht, int i, int ie) {
-    d.put(a[2]+":"+a[3],tx); d.put(h, tx); for(;i<=ie;i+=2) d.put(a[i+1], a[i]+":"+i+":"+h+":"+ht+":/"+d.getOrDefault(a[i+1],"")); 
-  } 
   static String sign(String msg, PrivateKey sk) throws Exception {
     Signature s = Signature.getInstance("SHA256withECDSA"); s.initSign(sk); s.update(msg.getBytes(UTF_8));
     return msg + " SIG " + to58(s.sign()) + " \n"; // last space is important, see txn.split(" ")!
@@ -235,26 +231,51 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 
 // TODO and ideas
 
-// MIN txn probably should award to a new pk. currenty 3rd and 6th fields are the same pk
+// With the block size fixed and limited (16 or 32k or so) the step of
+// transaction verification in miner threads should include logic for
+// reducing the batch to fit.  The miner can gain in reward if before
+// the transaction are pruned, they are ordered using fee per byte
+// factor. Method verifyTx can return class Tx {boolean ok; int fee; int len; String txt;}
+// and 
+//
+// txs = seq(scratch.txns).filter(t->null!=verifyTx(t,fee,md,b,sig,kf,log)).reduce("",(x,y)->x+", "+y));
+// 
+// becomes 
+//
+// int fees = 0; String txs = "";
+// for (Tx tx : seq(scratch.txns).map(t->verifyTx(t,md,b,sig,kf,log)).filter(t->t.ok)
+//              .sort((t1, t2)->1000*t1.fee/t1.len - 1000*t2.fee/t2.len);
+//   { if (txs.length + tx.len > TXLMX) break; fees+=tx.fee; txs+=tx.txt; }
 
-// TODO: needs to incl merkle...if (!toHex(md.digest(prv+root+form("%x08",nonce)).getBytes(UTF_8))).equals(hash)) { out("Verification FAILED, block hash is wrong: " + hash); continue; }
+// As transactions verification in miner threads now includes accepting
+// transactions into some b.d, question is what to do with those that
+// fail verification. Mark them as bad or even remove from scratch.d
+// or re-try again each time?  The later happens now with some time
+// wasted on it. Advantage is that if forking rearranges the chain, no
+// bookkeeping is required. Ideally, if the 'cause' of rejection is
+// some txn that is N blocks deep (3 is good enough) then such txn can
+// be removed from scratch.d. it looks as only those that depend on
+// txn in the same or 2 blocks can be kept. Those with bad signatures,
+// bad balance, bad tx hash etc etc can be permanently removed.
 
-// instead of finding some old pk and sending to it, the creator of TXN should look into a synchronized
-// list (Vector?) of "Craigslist of service providers" and select one randomly if he has money.
-// the list is populated by nodes with relatively little coins in wallets, offering services for pay. 
-// each entry is newly generated pk and price (and maybe also a short description, for fun sake).
+// In listeners, block verification needs to include hashing the
+// transactions and doing
+//
+// if (!toHex(md.digest(prv+root+form("%x08",nonce)).getBytes(UTF_8))).equals(hash)) { out("Verification FAILED, block hash is wrong: " + hash); continue; }
 
-// ideally the above should be logged, somehow.
+// Height. Add blockchain 'height' index in each block or perhaps a
+// simple loop to get it. height(b) -> int with -1, -2, -3 etc meaning
+// block has broken link that deep.
 
-// blockchain 'height' index in each block or perhaps a simple loop to
-// get it. height(b) -> int with -1, -2, -3 etc meaning block has broken link that deep.
+// Maybe...Coinbase transactions probably should award to a new pk. currenty
+// 3rd and 6th fields are the same pk
 
 // Asking. node must be able to ask the network about a missing block
 // or get the whole chain.  What about the asking node switching to a
 // separate channel, or better, spawning a special thread to collect
 // the responses?
 
-// The 'top set' concept. A node maintains a list of tops each leading to
+// Maybe...The 'top set' concept. A node maintains a list of tops each leading to
 // the same root (zero block) each being verified and containing valid
 // txns. if there is more than one, and all of the same height, then
 // node is not yet able to find the longest chain. txn count does not
@@ -262,18 +283,20 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 // immediately flashed or kept just in case? Maybe the later is more
 // interesting.
 
-// possibly, review and improve the 'spent out' detection. currently - pk is marked 'spent' in a block.d.
-
-// apis to go from pk to (1) all non-spent txn outs (2) what else?
-
-// with that, dump the wallet at the end.
+// possibly, review and improve the 'spent out' detection. currently -
+// pk is marked 'spent' in a block.d.
 
 // multiple processes: late-comer must name the nodes (or at least,
-// files) differently, how? simple hack: asking. asking the net about the value of 'nodes' and start from there.
-// simplest solution is cluster name: java -Dcluster=SF   java -Dcluster=MY java -Dcluster=LA. Yet even simpler to 
-// run each cluster in a separate 'home' dir.
+// files) differently, how? simple hack: asking. asking the net about
+// the value of 'nodes' and start from there.  simplest solution is
+// cluster name: java -Dcluster=SF java -Dcluster=MY java
+// -Dcluster=LA. Yet even simpler to run each cluster in a separate
+// 'home' dir.
 
-// Command line options: perhaps, switch from args[] to props: CryptoBlockChain -Dn=7 -Dd=49 -Dcoin=XYZCoin ....
-// int difficulty = toI(sprop("d","48")), nodes = toI(sprop("n", "7")
+// Command line options: perhaps, switch from args[] to props:
+// CryptoBlockChain -Dn=7 -Dd=49 -Dcoin=XYZCoin ....  int difficulty =
+// toI(sprop("d","48")), nodes = toI(sprop("n", "7")
 
-// Streams: byte stream does not work  static String toHex2(byte[] d) { return Arrays.stream(d).map(b->String.format("%02x", b&0xff)).reduce("",(a,b)->a+b); }
+// Streams: byte stream does not work static String toHex2(byte[] d) {
+// return Arrays.stream(d).map(b->String.format("%02x",
+// b&0xff)).reduce("",(a,b)->a+b); }
