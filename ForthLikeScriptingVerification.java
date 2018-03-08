@@ -7,90 +7,70 @@ public class ForthLikeScriptingVerification {
   static int nodes, difficulty, effort, blockMx, reward=50000; static class Cred { String pk; PrivateKey sk; Cred(String p, PrivateKey s) {pk=p;sk=s;}} 
   static volatile int block_count; static volatile boolean run = true; static Stack<String> ads = new Stack<>(); static final String E = "";
 
-
-  static String prev_tx = "MINT new coins _ _ OPK 50000 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKNhkbFdjL6LR6m4WBPBs1Kc5p6Ci1mWQFrryp12Q7wNAVFGLU7fHiNgJHdF8Cwqnn1WnwZcKt83N9Mz1FxA2ZMXR PKSIG RET _ _   ",
   // this is actual text that was signed...
-    real_signed_text = "TXN 19:32:07 5 4FnwBH9R1dzsgbdbFkMmsUAKcnrXfjvJGnHktiBZcxLz aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKNhkbFdjL6LR6m4WBPBs1Kc5p6Ci1mWQFrryp12Q7wNAVFGLU7fHiNgJHdF8Cwqnn1WnwZcKt83N9Mz1FxA2ZMXR 25699 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTG9tsvAJhmjNhUQQNbwdGWFL8PchqxfoGfgDm94uWKR9JZPuC7C9j6j6n6xTCjTRCWJr1NiFMqbqzWcomSjSDxQdd 24120 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTGCg2EgMipnLwbCq1L23x7DabKnznzAE7LtGd9qVZdx9czmR7GS9vU5XkgATpLfk3BEqFsctXQdpxA3HGfbPzNhJE", 
+  static byte[] msg = "TXN 19:32:07 5 4FnwBH9R1dzsgbdbFkMmsUAKcnrXfjvJGnHktiBZcxLz aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKNhkbFdjL6LR6m4WBPBs1Kc5p6Ci1mWQFrryp12Q7wNAVFGLU7fHiNgJHdF8Cwqnn1WnwZcKt83N9Mz1FxA2ZMXR 25699 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTG9tsvAJhmjNhUQQNbwdGWFL8PchqxfoGfgDm94uWKR9JZPuC7C9j6j6n6xTCjTRCWJr1NiFMqbqzWcomSjSDxQdd 24120 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTGCg2EgMipnLwbCq1L23x7DabKnznzAE7LtGd9qVZdx9czmR7GS9vU5XkgATpLfk3BEqFsctXQdpxA3HGfbPzNhJE".getBytes(UTF_8);
 
-  // format: TXN signature* count SIG timestamp VDATE sig_idx SIGI pk prev_tx_idx prev_tx_id CALL OPK len coins pk PKSIG RET TXE
-  // in 1out: TXN s 1 SIG timestamp VDATE 0 SIGI pk prev_tx_id CALL OPK 5 coins pk PKSIG RET TXE
+  // general format: TXN signature* count SIG [timestamp VDATE] sig_idx SIGI pk prev_tx_idx prev_tx_id CALL OPK scriptsz pkidx..... coins RET TXE
+  // 1in, 1 pk-check out: TXN s 1 SIG timestamp VDATE 0 SIGI pk 6 asd..fgd CALL OPK 9 4 DUP pk ERRIFNEQ PK PKSIG coins RET TXE
   // any number of sigs+impus and any number of outs. 2 in 2 out:
-  // TXN s1 s2 2 SIG timestamp VDATE 0 SIGI pk1 prvid1 CALL 1 SIGI pk2 prvid2 CALL OPK 5 coins1 pk3 PKSIG RET OPK 5 coins2 pk4 PKSIG RET TXE
-    tx = "TXN AN1rKvtGkfApxfpj4Ht31N8ZCYYAvjLQvVadB8FVR7qXLWxXGM6fLjs2sc2TMk4THWTR5onYXmQcfyVDNbDzEK9moMHExRUNP 1 SIG 1520221955783 VDATE 0 SIGI aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKNhkbFdjL6LR6m4WBPBs1Kc5p6Ci1mWQFrryp12Q7wNAVFGLU7fHiNgJHdF8Cwqnn1WnwZcKt83N9Mz1FxA2ZMXR 6 4FnwBH9R1dzsgbdbFkMmsUAKcnrXfjvJGnHktiBZcxLz CALL OPK 5 25699 aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTG9tsvAJhmjNhUQQNbwdGWFL8PchqxfoGfgDm94uWKR9JZPuC7C9j6j6n6xTCjTRCWJr1NiFMqbqzWcomSjSDxQdd PKSIG RET TXE";
+  // TXN s s 2 SIG tm VDATE 0 SIGI pk 6 asd..fgd CALL 1 SIGI ... CALL + OPK 9 4 DUP pk ERRIFNEQ PK PKSIG coins RET OPK 9 4 ... RET TXE
+  // note OPK does subtraction, call does not do summation, hence after the last CALL n-1 + where N is number of inputs
+  // txn output with pk hash  can be: OPK 10 5 DUP SHA256 pkh ERRIFNEQ PK-hash PKSIG coins RET TXE
+  static String tx = "TXN AN1rKvtGkfApxfpj4Ht31N8ZCYYAvjLQvVadB8FVR7qXLWxXGM6fLjs2sc2TMk4THWTR5onYXmQcfyVDNbDzEK9moMHExRUNP 1 SIG 1520221955783 VDATE 0 SIGI aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKNhkbFdjL6LR6m4WBPBs1Kc5p6Ci1mWQFrryp12Q7wNAVFGLU7fHiNgJHdF8Cwqnn1WnwZcKt83N9Mz1FxA2ZMXR 6 4FnwBH9R1dzsgbdbFkMmsUAKcnrXfjvJGnHktiBZcxLz CALL OPK 9 4 DUP aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTG9tsvAJhmjNhUQQNbwdGWFL8PchqxfoGfgDm94uWKR9JZPuC7C9j6j6n6xTCjTRCWJr1NiFMqbqzWcomSjSDxQdd ERRIFNEQ PK-missmatch PKSIG 25699 RET OPK 10 5 DUP SHA256 pkh ERRIFNEQ PK-hash PKSIG 10000 RET TXE";
+
+  static String prev_tx = "MINT new coins OPK 9 4 DUP aSq9DsNNvGhYxYyqA9wd2eduEAZ5AXWgJTbTKNhkbFdjL6LR6m4WBPBs1Kc5p6Ci1mWQFrryp12Q7wNAVFGLU7fHiNgJHdF8Cwqnn1WnwZcKt83N9Mz1FxA2ZMXR ERRIFNEQ PK-missmatch! PKSIG 50000 RET . . .  TXE";
+
     
   public static void main(String argv[]) throws Exception { new ForthLikeScriptingVerification().test(); }
   void test () throws Exception {
-    Block b = new Block(); b.d = new HashMap<>();  
-    trace(""+new TxVerifier().verify(tx, MessageDigest.getInstance("SHA-256"), b, 
-                            Signature.getInstance("SHA256withECDSA"), KeyFactory.getInstance("EC"), 
-                                  new PrintWriter(System.out)));
+    Block b = new Block(); b.d = new HashMap<>();  MessageDigest md = MessageDigest.getInstance("SHA-256");
+    trace(""+new VerifyTx(new Tx(to58(md.digest(tx.getBytes(UTF_8))), tx), new PrintWriter(System.out))
+          .verify(md, b, Signature.getInstance("SHA256withECDSA"), KeyFactory.getInstance("EC") ));
   }
 
-  static class Tx {
-    String id, txt, a[], siga[], ins = "", ous = ""; int fee, len, i, v; boolean ok; 
-    Tx(String h, String v) { id = h; txt = v; a = txt.split(" "); } 
-    public String toString() { return String.format("{Tx %s %d %d %b %d %s %s }", id, fee, len, ok, v, ins, ous); }
-  };
-
-  class TxVerifier {
-    String s1 = "", s2="", s3=""; int i1, i2; // temp 'registers'
+  static class Tx { Tx(String h, String v) { id = h; txt = v; a = txt.split(" "); } 
+    String id, txt, a[], siga[], ins = "", ous = ""; int fee, len, ti, v; boolean ok; // Tx state
+    public String toString() { return String.format("{Tx %s %d %d %b %d %s %s}", id, fee, len, ok, v, ins, ous); }
+  }
+  class VerifyTx { VerifyTx(Tx tx, PrintWriter w) { t=tx; pw=w;} // Runs u-FORTH machine for verification and acceptance
+    PrintWriter pw;
+    Tx t; String s1, s2, s3, a[]; int i1, i2; // temp 'registers'
     String[] ds = new String[20]; int dsi = -1, sz = 0; // data stack
+    Tx rst[] = new Tx[10]; int ti = 1, rsi = -1; // return stack and its top 'cache'
+    Tx retLog(int val, String msg, Object... a) { if(pw != null) pw.format(msg+"\n", a); pw.flush(); t.v = val; return t;}
+
     int popI() { return toI(ds[dsi--]); } long popL() { return toL(ds[dsi--]); }
-    Tx rst[] = new Tx[10], t; int ti = 1, rsi = -1; // return stack and its top 'cache'
     // returns Tx with flags/data and logs errors
-    Tx verify(String txt, MessageDigest md, Block b, Signature s, KeyFactory kf, PrintWriter log) { 
-      int go = 100; t = new Tx(to58(md.digest(txt.getBytes(UTF_8))), txt);
+    Tx verify(MessageDigest md, Block b, Signature s, KeyFactory kf) throws Exception { 
+      int go = 100; 
       for (String w = ""; go>0; ti++, go--) {
         switch (w=trace((t.a[ti]))) {
-        default: ds[++dsi] = w; break;
-        case "CALL": s1 = ds[dsi--]; if ((s2=get(s1,b))== null) return retLog(log, "no such tx", -1, t); 
-          i1 = popI(); if (get(s3=s1+":"+i1,b) != null) return retLog(log, "output spent", -1, t); 
-          t.ins+=s3+"/"; rst[++rsi] = t; t.i = ti; t = new Tx(s1,s2); ti = i1-1;          break;
-        case "RET": t = rst[rsi--];  ti = t.i; break;
-        case "DUP": ds[++dsi] = ds[dsi-1]; break; // LHS ev 1st
-        case "SIG": sz = popI(); t.siga = new String[sz]; for (; --sz >= 0;) t.siga[sz] = ds[dsi--]; break;
-        case "VDATE": if(popL() > System.currentTimeMillis()) return retLog(log, "too early", -1, t); break;
-        case "SIGI": ds[dsi] = t.siga[toI(ds[dsi])]; break;
-        case "PKSIG": try { s1=ds[dsi--]; i1 = popI(); if(!s1.equals(ds[dsi--])) return retLog(log, "in/out pk mismatch", -1, t); 
-            s.initVerify(kf.generatePublic(new X509EncodedKeySpec(as58(s1)))); s.update(real_signed_text.getBytes((UTF_8)));
-            if (!s.verify(as58(ds[dsi--]))) return retLog(log,"bad signature", -1, t); ds[++dsi] = ""+i1;
-          } catch (Exception e) { return retLog(log, e+": verification failed", -1, t); }  break;
-        case "OPK": ds[dsi]= ""+(toI(ds[dsi])-toI(s1=t.a[ti+=2])); t.ous+=t.a[ti+1]+":"+s1+":"+ti+"/"; ti+=-2+toI(t.a[ti-1]); break;
-        case "TXE": if ((t.fee=popI()) < 0) return retLog(log,"tx out > tx in", -1, t); t.ok = true; t.v=0; 
-          map(t.ins.split("/"),k->b.d.put(k,txt)); b.d.put(t.id, txt); 
-          for (String r : t.ous.split("/")) { String a[] = r.split(":"); b.d.put(a[0], a[1]+":"+a[2]+":"+t.id+":"+b.ht+":/"+b.d.getOrDefault(a[0],"")); }
-          return t;
-        case "SHA256": ds[dsi] = to58(md.digest(ds[dsi].getBytes(UTF_8))); break;
-        case "ERRIFNEQ": if (!(s1=ds[dsi--]).equals(s2=ds[dsi--])) return retLog(log,"mismatch s1="+s1+" s2="+s2, -1, t); break;
+        default: ds[++dsi] = w; trace("dsi:"+dsi);break;
+        case "CALL": s1 = ds[dsi--]; if ((s2=get(s1,b))== null) return retLog(-1,"no such tx"); 
+          i1 = popI(); if (get(s3=s1+":"+i1,b) != null) return retLog(-1,"output spent"); 
+          t.ins+=s3+"/"; rst[++rsi] = t; t.ti = ti; t = new Tx(s1,s2); ti = i1-1;          trace("dsi:"+dsi);break;
+        case "RET": t = rst[rsi--];  ti = t.ti; trace("dsi:"+dsi);break;
+        case "DUP": ds[++dsi] = ds[dsi-1]; trace("dsi:"+dsi);break; // LHS ev 1st
+        case "+": i1 = toI(ds[dsi--]) + toI(ds[dsi--]); ds[++dsi] = ""+i1; trace("dsi:"+dsi);break; // LHS ev 1st
+        case "SIG": sz = popI(); t.siga = new String[sz]; for (; --sz >= 0;) t.siga[sz] = ds[dsi--]; trace("dsi:"+dsi);break;
+        case "VDATE": if(popL() > System.currentTimeMillis()) return retLog(-1,"too early"); trace("dsi:"+dsi);break;
+        case "SIGI": ds[dsi] = t.siga[toI(ds[dsi])]; trace("dsi:"+dsi);break;
+        case "PKSIG": s.initVerify(kf.generatePublic(new X509EncodedKeySpec(as58(ds[dsi--])))); s.update(msg);
+            if (!s.verify(as58(ds[dsi--]))) return retLog(-1,"bad signature"); trace("dsi:"+dsi);break;
+        case "OPK": ds[dsi]= ""+(toI(ds[dsi])-toI(s1=t.a[i1=-1+ti+toI(t.a[ti+1])]));
+          t.ous+=t.a[ti+toI(t.a[ti+2])]+":"+s1+":"+i1+"/"; ti=i1+1; trace("dsi:"+dsi);break;
+        case "TXE": if ((t.fee=popI()) < 0) return retLog(-1,"tx out > tx in"); t.ok = true; t.v=0; 
+          map(t.ins.split("/"),k->b.d.put(k,t.txt)); b.d.put(t.id, t.txt); 
+          for (String r : t.ous.split("/")) { a=r.split(":"); b.d.put(a[0], f("%s:%s:%s:%s:/%s",a[1],a[2],t.id,b.ht,b.d.getOrDefault(a[0],"")));}
+          trace("dsi:"+dsi);  return t;
+        case "SHA256": ds[dsi] = to58(md.digest(ds[dsi].getBytes(UTF_8))); trace("dsi:"+dsi);break;
+        case "ERRIFNEQ": if (!(s1=ds[dsi--]).equals(s2=ds[dsi--])) return retLog(-1,"Error: %s %s and %s",t.a[ti+1],s1,s2); ti++; trace("dsi:"+dsi);break;
         }}
-      return retLog(log,"tx has too many commands", -1, t);
+      return retLog(-1,"tx has too many commands");
     }}
 
-  static String get(String k, Block b)  { return k.equals("4FnwBH9R1dzsgbdbFkMmsUAKcnrXfjvJGnHktiBZcxLz") ? prev_tx : null; }
-  static Tx retLog(PrintWriter log, String msg, int v,Tx t) { if(log != null) log.println(msg); log.flush(); t.v = v; return t; }
-  static String trace(String msg) { System.out.println("<<" + msg + ">>"); return msg; }
-
-
-  // // return stack with no cache - very hard!
-  // static String verifyTx_no_rs_cache(String tx, int[] fees, MessageDigest md, Block b, Signature s, KeyFactory kf, PrintWriter log) { 
-  //   // return stacks and pointer 
-  //   Tx[] rstx = new Tx[10]; int rsi = -1; String a[] = null;
-  //   // data stack
-  //   String[] ds = new String[20]; int dsi = -1, sz = 0;
-  //   rstx[++rsi] = new Tx(tx); rstx[rsi].i = 1;
-  //   boolean go = true; 
-  //   for (String w = ""; go; rstx[rsi].i++) {
-  //     switch (w=(rstx[rsi].a[rstx[rsi].i])) {
-  //     case "SIG": 
-  //       sz = toI(ds[dsi--]); a = new String[sz];  
-  //       for (; --sz >= 0;) a[sz] = ds[dsi--]; rstx[rsi].siga = a; break;
-  //     case "VDATE": if(toL(ds[--dsi]) > System.currentTimeMillis()) return logVal(log, "too early", null);
-  //     default: ds[dsi++] = w; 
-  //     }}
-  //   return null;
-  // }
-
-
+  static String f(String s, Object... a) { return String.format(s, a); } static String trace(String m) { System.out.println(f("<%s>",m)); return m; }
+  static String get(String k, Block b) { return k.equals("4FnwBH9R1dzsgbdbFkMmsUAKcnrXfjvJGnHktiBZcxLz") ? prev_tx : null; }
 
   //===============================================================================================================
   static java.util.stream.Stream<Cred> sCred(Collection<Cred> c) { return c.stream(); }
@@ -161,4 +141,31 @@ public class ForthLikeScriptingVerification {
     buf.write(b); return buf.toByteArray();
   }
 } 
+
+// NOTES
+
+
+
+
+
+
+// // return stack with no cache - very hard!
+// static String verifyTx_no_rs_cache(String tx, int[] fees, MessageDigest md, Block b, Signature s, KeyFactory kf, PrintWriter log) { 
+//   // return stacks and pointer 
+//   Tx[] rstx = new Tx[10]; int rsi = -1; String a[] = null;
+//   // data stack
+//   String[] ds = new String[20]; int dsi = -1, sz = 0;
+//   rstx[++rsi] = new Tx(tx); rstx[rsi].i = 1;
+//   boolean go = true; 
+//   for (String w = ""; go; rstx[rsi].i++) {
+//     switch (w=(rstx[rsi].a[rstx[rsi].i])) {
+//     case "SIG": 
+//       sz = toI(ds[dsi--]); a = new String[sz];  
+//       for (; --sz >= 0;) a[sz] = ds[dsi--]; rstx[rsi].siga = a; break;
+//     case "VDATE": if(toL(ds[--dsi]) > System.currentTimeMillis()) return logVal(log, "too early", null);
+//     default: ds[dsi++] = w; 
+//     }}
+//   return null;
+// }
+
 
