@@ -3,8 +3,8 @@ My Tiny Crypto Blockchain Simulators
 ====================================
 Copyright (c) 2018 dmitrynizh
 
-These simulators are a toys, yet succeed in demonstrating many
-concepts of digital currency, peer-to-peer distributed consensus
+These simulators are very simple toys, yet succeed in demonstrating
+many concepts of digital currency, peer-to-peer distributed consensus
 mechanisms, secure hashing, digital signatures, public key
 cryptography.
 
@@ -35,12 +35,14 @@ File Mine.java
 Compile:   % javac Mine.java
 Run:       $ java Mine <difficulty> <previous-block-header-bytes> <file-with-transactions>
 
-Mine tries to find the hash for the next block continuously increasing
-nonce and checking that SHA-256 hash of byte array containing
+Mine tries to find the hash for the next block containing <difficulty>
+leading hex zeroes, continuously increasing nonce and periodically
+checking that SHA-256 hash of byte array containing
 <previous-block-header-bytes>, Merkle root hash of all transactions
 from <file-with-transactions> and 4 bytes of the nonce counter. The
 hash , elapsed time and hash rate are printed out when hash is found.
-Mine the files about once every second, updating the cache when new content arrives.
+Mine the files about once every second, updating the cache when new
+content arrives.
 
 File BlockChain.java
 --------------------------
@@ -48,15 +50,16 @@ Compile:   % javac BlockChain.java
 Run:       $ java BlockChain
 
 This is a very simple peer-to-peer network based on Java UDP
-protocols. Each node runs two threads, one ;mines' and another
-receives incoming messages. Any cryptography was deliberately left out
-from this simulator and it substitutes cryptographic proof-of-work
-with random thread loads and or sleep intervals. In many other
-aspects, the nodes function as described in in the Bitcoin White Paper
-[1], build distributed blockchain and and maintain consensus. After
-specified number of blocks was created, each node terminates, saving
-the blockchain ledger to the disk. The consensus is demonstated when
-all such files are essentially identical.
+protocols. Each node runs two threads, one 'mines' and another listens
+to incoming messages. Any cryptography was deliberately left out from
+this simulator and it substitutes cryptographic proof-of-work with
+random sleep intervals. In many other aspects, the nodes function as
+described in in the Bitcoin White Paper [1], build distributed
+blockchain and and maintain consensus by accepting longest
+proof-of-work (in a form of 'proof-of-sleep') and verifying
+transactions. After specified number of blocks was created, each node
+terminates, saving the blockchain ledger to the disk. The consensus is
+demonstrated when all such files are essentially identical.
 
 The nodes accept a new block after verifying that it extends the last
 one and checking that it does nor include transaction already included
@@ -78,7 +81,7 @@ time, the workings of a secure and distributed cryptographic
 blockchain based on proof-of-work as outlined in the Bitcoin White
 Paper [1].  
 
-To compile and run this simulator, you need JDK Java 8 or newer.
+To compile and run this simulator, you need Java 8 or newer.
 
 Compile:   % javac CryptoBlockChain.java
 Run:       $ java CryptoBlockChain
@@ -117,13 +120,13 @@ before accepting new transactions and blocks.
 
 When the network reaches the chain-length goal, nodes start shutting
 down. Each node saves its blockchain ledger onto the disk.  The
-consensus is demonstated when all such files are essentially
+consensus is demonstrated when all such files are essentially
 identical. 
 
 The functioning of CryptoBlockChain is mainly as described in the
-Bitcoin Whiite Paper[1] and it can be viewed as a 'cleanroom'
+Bitcoin White Paper[1] and it can be viewed as a 'cleanroom'
 implementation of that.  Specifically, the key mechanisms described in
-chapters 4 and 5 are implemented precisely as described:
+chapters 4-6, 9 and 10 are implemented precisely as described:
 
   "4. Proof-of-Work
   ...The proof-of-work involves scanning for a value that when hashed,
@@ -152,6 +155,17 @@ chapters 4 and 5 are implemented precisely as described:
   will be broken when the next proof-of-work is found and one branch
   becomes longer."
 
+  "6. Incentive
+  
+  ..the first transaction in a block is a special transaction that
+  starts a new coin owned by the creator of the block. This adds an
+  incentive for nodes to support the network, and provides a way to
+  initially distribute coins into circulation... The incentive can also be funded
+  with transaction fees. If the output value of a transaction is less
+  than its input value, the difference is a transaction fee that is
+  added to the incentive value of the block containing the
+  transaction."
+
   "9. Combining and Splitting Value
   Although it would be possible to handle coins individually, it would be unwieldy to make a
   separate transaction for every cent... Normally there will a single input
@@ -170,22 +184,23 @@ simplified:
     Currently, CryptoBlockChain supports txns with single input and two outputs.
 (2) In each process started as described above, all nodes start and 
     terminate at once  and maintain consensus.  When multiple processes run, 
-    nodes can join and leave the common network at will, however latecomer
+    nodes can join and leave the common network at will, however late-comer
     nodes can not yet request a missing block or current blockchain (chapter 5). 
     This currently does not allow to establish consensus across separate processes
     that connect at different times to the same p2p network.
 (3) Spent transactions can't be pruned as described in ch.7, and in fact, 
     Merkle trees are not currently kept.
-(4) Consequently, "Simplified payment verification" (chapter 8) not implemented.
-(5) Miningg reward is fixed at 50 btc and does not become smaller as chain grows.
-(6) Miningg difficulty is set initially and does not adjust to control mining rates.
+(4) Consequently, "Simplified payment verification" (chapter 8) is not implemented.
+(5) Mining reward is fixed at 50 btc and does not become smaller as chain grows.
+(6) Mining difficulty is set initially and does not yet adjust automatically 
+    to control mining rates (chapter 4).
 
 All these limitations can be fairly easily removed in future updates
 time permitting.  Priority will be given in the order listed above - 1
 has highest priority followed by 2 and so on.
 
 No attempt was made to copycat any implementational details of real
-bitcoin clients, wallets, APIs, protocols, binary layouts,
+Bitcoin Core or Clients, Wallets, APIs, any protocols, binary layouts,
 representations, 'address' size and structure etc.  The goal was to
 produce a cleanroom simulator based solely on what is specified in
 [1], with simple and direct representation, adequate but not
@@ -193,7 +208,7 @@ over-optimized for performance. Hence, for instance, packets are
 sequences of space separated words and not byte streams, and
 'addresses' are public keys, not hashes of them as in 'real' Bitcoin
 of later releases. As [1] does not outline wallets, a node's wallet is
-a simple collection of pk/sk pairs objects, not a sophistcated asset
+a simple collection of pk/sk pairs objects, not a sophisticated asset
 manager. Notable exceptions are (1) use of Bitcoin flavor of ECDSA for
 public keys and (2) use of base58. Initially, hashes and keys were
 printed out in base64 but I found that base58 is much more pleasant to
@@ -358,7 +373,7 @@ $
 In the log most long base-58 hash strings are truncated to save some screen space. The values that go into 
 blockchain ledgers are not truncated.
 
-This particular run results in 7 ledgers - blockchain0.txt, blockchain1.txt, etc
+This particular run results in 8 ledgers - blockchain0.txt, blockchain1.txt, etc
 - saved to current directory, one for each node.  All ledgers are
 identical and list the blocks that were accepted by the nodes:
 
@@ -400,7 +415,7 @@ CiDZiJtvRHuWBsCN36YoxGFQkqxRMw9J9snQgwzX7SkX:TXN 18:39:26 5 MXn6PMhctVwq9iySpQ2p
 
 ....
 
-Wallet balances and accounting are printed out in files
+Wallet balances and accounting are saved in files
 balanceN.txt. From file balance3.txt:
 
 At Sun Mar 04 18:35:34 PST 2018 my BTC balance: 50.000 
