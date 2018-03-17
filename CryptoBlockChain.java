@@ -105,16 +105,16 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
                 if (prv.equals(scratch.prev.prev.hash)) { // contestant
                   b.prev = scratch.prev.prev;  
                   b.ht = b.prev.ht+1; scratch.alt = b; // "save the other branch in case it becomes longer"[1]
-                } else log.println("ERROR: seriously orphane block, this is not handled yet. s.p.h:" + scratch.prev.hash + " block: " +  msg);
+                } else log.println("ERROR: seriously orphane block, not linking into chain. s.p.h:" + scratch.prev.hash + " block: " +  msg);
               } else { b.prev = scratch.prev; scratch.prev = b; b.ht = b.prev.ht+1; } // normal case
               for (int fee[]={0};i >= 0 && (h = verifyTx(txa[i], fee, md, b, sig, kf, log)) != null;i--); // done backwads to compute fees
               if (i == -1) { // all transactions valid and accepted. note: above, consider passing i in to check that i=0 is MINT
                 b.hash = hdr_a[1]; b.nonce = toI(hdr_a[3]); b.stamp = Long.parseLong(hdr_a[4]); 
-                (b.txns = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns); scratch.state = 2; // scratch.txns.clear(); // scratch.txns.removeAll(txns); 
+                (b.txns = new TreeSet<>((x, y)->x.compareTo(y))).addAll(txns); scratch.state = 2; scratch.txns.removeAll(txns); 
               } else { log.println("block's nth n="+i+" txn is invalid, rejecting whole block: " + msg); scratch.prev = sp; scratch.alt = sa; }
               int sum = map(w,c->get(c.pk,scratch)).filter(v->v!=null)
                 .mapToInt(s->map(s.split("/"),v->v.split(":")).filter(v->get(v[1]+":"+v[2],scratch)==null).mapToInt(v->toI(v[0])).sum()).sum();
-              bpw.printf("At %tc my BTC balance: %4.3f \n", new Date(), ((double)sum)/1000.0); bpw.flush();
+              bpw.printf("At %tc your BTC balance is: %8.3f \n", new Date(), ((double)sum)/1000.0); bpw.flush();
             }} // stop run, report
           String blockchain = "", h_txn = ""; Block s = scratch;
           for (Block b = s.prev; b.prev != null; b = b.prev, h_txn = "") { //log.println("B:"+b.hash+" txns: "+txt(b));
@@ -222,12 +222,6 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 
 // CHANGES
 
-// 1. Bye-bye doubles! as soon as fees were added and verified,
-// doubles no longer work. Switched to  milliBTC.
-
-// 2. verifyTx now calls acceptTx, this helps miner to detect conflicting txns in new batch,
-// for which a fresh block is constructed with a dictionary.
-
 
 // TODO and ideas
 
@@ -244,24 +238,42 @@ public class CryptoBlockChain { // (c) 2018 dmitrynizh. MIT License.
 //
 // int fees = 0; String txs = "";
 // for (Tx tx : seq(scratch.txns).map(t->verifyTx(t,md,b,sig,kf,log)).filter(t->t.ok)
-//              .sort((t1, t2)->1000*t1.fee/t1.len - 1000*t2.fee/t2.len);
-//   { if (txs.length + tx.len > TXLMX) break; fees+=tx.fee; txs+=tx.txt; }
+//              .sorted((t1, t2)->1000*t1.fee/t1.len - 1000*t2.fee/t2.len).toArray(Tx[]::new))
+//   { if (txs.length() + tx.len > TXLMX) break; fees+=tx.fee; txs+=tx.txt; }
 
-// As transactions verification in miner threads now includes accepting
-// transactions into some b.d, question is what to do with those that
-// fail verification. Mark them as bad or even remove from scratch.d
-// or re-try again each time?  The later happens now with some time
-// wasted on it. Advantage is that if forking rearranges the chain, no
-// bookkeeping is required. Ideally, if the 'cause' of rejection is
-// some txn that is N blocks deep (3 is good enough) then such txn can
-// be removed from scratch.d. it looks as only those that depend on
-// txn in the same or 2 blocks can be kept. Those with bad signatures,
-// bad balance, bad tx hash etc etc can be permanently removed.
+// As transactions verification in miner threads now includes
+// accepting transactions into some b.d, question is what to do with
+// those that fail verification. Mark them as bad or even remove from
+// scratch.d or re-try again each time?  The later happens now with
+// some time wasted on it. Advantage is that if forking rearranges the
+// chain, no bookkeeping is required. Ideally, if the 'cause' of
+// rejection is some txn that is N blocks deep (3 is good enough) then
+// such txn can be removed from scratch.d. it looks as only those that
+// depend on txn in the same or 2 blocks can be kept. Those with bad
+// signatures, bad balance, bad tx hash etc etc can be permanently
+// removed.  This can probably be done with the class Tx shown above
+// with 'ok' being int and filtering removed and ok==0 set for valid
+// TX with UO, 1 for SO depth 1, 2 for depth 2 and so on.  The for
+// loop then does the following 3 things: accumulates valid txs with
+// UOs, removes from scratch invlid ones with ok < 0 or ok > depth
+// threshold and keeps the rest. here is for depth 1:
+//
+// for (Tx tx : seq(scratch.txns).map(t->verifyTx(t,md,b,sig,kf,log))
+//              .sorted((t1, t2)->1000*t1.fee/t1.len - 1000*t2.fee/t2.len).toArray(Tx[]::new)) {
+//   if (t.ok == 0 && txs.length() + tx.len < TXLMX) { fees+=tx.fee; txs+=tx.txt; }
+//   else if (t.ok < 0 || t.ok > 1) scratch.txns.remove(t.txt); }
 
 // In listeners, block verification needs to include hashing the
 // transactions and doing
 //
 // if (!toHex(md.digest(prv+root+form("%x08",nonce)).getBytes(UTF_8))).equals(hash)) { out("Verification FAILED, block hash is wrong: " + hash); continue; }
+
+// Block per hour. It is easy to switch to framework with automatic
+// difficulty adjustment (chapter 4 of [1]). some part of the system
+// needs to measure average block rate and change difficulty
+// correspondingly. User can set -DBTH yo desired value. Difficulty
+// would start low to quickly mint a lot of coins and then gradually
+// increease to deliver BTH blocks per hour on average.
 
 // Height. Add blockchain 'height' index in each block or perhaps a
 // simple loop to get it. height(b) -> int with -1, -2, -3 etc meaning
